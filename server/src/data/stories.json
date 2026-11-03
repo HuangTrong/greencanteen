@@ -1,0 +1,158 @@
+[
+  {
+    "slug": "sea-turtles-plastic-ingestion",
+    "title": "Rùa biển và ngưỡng 14 mảnh nhựa",
+    "species": "Rùa biển — chủ yếu rùa xanh (Chelonia mydas), cùng đồi mồi (Eretmochelys imbricata), rùa quản đồng (Caretta caretta) và một số loài khác",
+    "icon": "🐢",
+    "summary": "Nhóm nghiên cứu tại Úc mổ khám 246 con rùa biển mắc cạn ở bang Queensland và phân tích thêm 706 hồ sơ mổ khám từ cơ sở dữ liệu StrandNet. Rùa chết vì nguyên nhân không liên quan đến nhựa có ít nhựa trong ruột hơn rùa chết do nuốt nhựa (tắc, thủng ruột) hoặc chết không rõ nguyên nhân. Từ đó, mô hình ước tính khi trong ruột có 14 mảnh nhựa, xác suất tử vong là 50%. Rùa non có nhiều mảnh nhựa trong ruột hơn rùa trưởng thành.",
+    "caveat": "Kết quả thống kê từ dữ liệu mổ khám rùa đã chết ở Queensland (Úc), không phải câu chuyện của một cá thể cụ thể.",
+    "message": "Mỗi ly nhựa không bị thải ra môi trường là bớt một nguồn mảnh nhựa có thể đến với rùa biển.",
+    "source": {
+      "title": "A quantitative analysis linking sea turtle mortality and plastic debris ingestion",
+      "authors": ["Chris Wilcox", "Melody Puckridge", "Qamar A. Schuyler", "Kathy Townsend", "Britta Denise Hardesty"],
+      "journal": "Scientific Reports",
+      "year": 2018,
+      "volume": "8",
+      "pages": "12536",
+      "doi": "10.1038/s41598-018-30038-z",
+      "url": "https://doi.org/10.1038/s41598-018-30038-z"
+    }
+  },
+  {
+    "slug": "seabirds-debris-mortality",
+    "title": "Chim biển: nuốt một mảnh rác đã là rủi ro",
+    "species": "Chim biển bộ Hải âu (Procellariiformes) — 51 loài",
+    "icon": "🐦",
+    "summary": "Các nhà khoa học mổ khám và xác định nguyên nhân chết của 1.733 cá thể chim biển thuộc 51 loài trong bộ Hải âu, thu thập ở Úc và New Zealand (chim mắc lưới nghề cá, chim chết khi đang được chăm sóc thú y và xác dạt vào bờ). Kết quả cho thấy quan hệ liều – đáp ứng: nuốt một mảnh rác ứng với 20,4% khả năng chết vì rác, 9 mảnh ứng với 50% và 93 mảnh ứng với 100%. Tắc nghẽn đường tiêu hóa là nguyên nhân tử vong hàng đầu; mảnh bóng bay là loại rác nguy hiểm nhất, có khả năng gây chết cao gấp 32 lần nhựa cứng.",
+    "caveat": "Xác suất được ước tính bằng mô hình từ dữ liệu xác chim, không mô tả một cá thể cụ thể.",
+    "message": "Giảm rác nhựa ngay từ nguồn — như bỏ thói quen dùng ly nhựa một lần — là cách thiết thực để bớt rác trôi ra biển.",
+    "source": {
+      "title": "A quantitative analysis linking seabird mortality and marine debris ingestion",
+      "authors": ["Lauren Roman", "Britta Denise Hardesty", "Mark A. Hindell", "Chris Wilcox"],
+      "journal": "Scientific Reports",
+      "year": 2019,
+      "volume": "9",
+      "pages": "3202",
+      "doi": "10.1038/s41598-018-36585-9",
+      "url": "https://doi.org/10.1038/s41598-018-36585-9"
+    }
+  },
+  {
+    "slug": "laysan-albatross-chicks-plastic",
+    "title": "Chim non hải âu Laysan được bố mẹ mớm nhựa",
+    "species": "Hải âu Laysan (Phoebastria immutabilis)",
+    "icon": "🐣",
+    "summary": "Nhóm nghiên cứu so sánh hai đàn hải âu Laysan làm tổ ở đảo san hô Kure và đảo Oahu (quần đảo Hawaii), cách nhau 2.150 km. Họ gắn 22 thiết bị định vị cho chim bố mẹ đang sinh sản và thu các khối chất khó tiêu do chim non nhả ra. Chim non ở Kure được mớm lượng nhựa gần gấp 10 lần chim non ở Oahu, dù lượng thức ăn tự nhiên trong các khối nhả ra ở hai nơi tương tự nhau. Dữ liệu định vị cho thấy vùng kiếm ăn của chim bố mẹ ở Kure trùng nhiều hơn với khu vực được cho là \"vùng rác phía Tây Thái Bình Dương\" (Western Garbage Patch).",
+    "caveat": "So sánh ở cấp đàn chim; nghiên cứu không theo dõi số phận của từng chim non.",
+    "message": "Bớt rác nhựa trên biển là bớt nhựa trong bữa ăn của chim non.",
+    "source": {
+      "title": "Bringing Home the Trash: Do Colony-Based Differences in Foraging Distribution Lead to Increased Plastic Ingestion in Laysan Albatrosses?",
+      "authors": ["Lindsay C. Young", "Cynthia Vanderlip", "David C. Duffy", "Vsevolod Afanasyev", "Scott A. Shaffer"],
+      "journal": "PLoS ONE",
+      "year": 2009,
+      "volume": "4",
+      "issue": "10",
+      "pages": "e7623",
+      "doi": "10.1371/journal.pone.0007623",
+      "url": "https://doi.org/10.1371/journal.pone.0007623"
+    }
+  },
+  {
+    "slug": "hermit-crabs-debris-entrapment",
+    "title": "Bẫy rác trên bãi biển và hàng trăm nghìn con cua ẩn sĩ",
+    "species": "Cua ẩn sĩ dâu tây (Coenobita perlatus)",
+    "icon": "🦀",
+    "summary": "Nghiên cứu khảo sát rác trên bãi biển và trong thảm thực vật ven biển của hai hòn đảo xa xôi: đảo Henderson (Nam Thái Bình Dương) và quần đảo Cocos (Keeling) (Ấn Độ Dương). Lượng rác lớn tạo thành rào cản mà cua ẩn sĩ gặp phải trong hoạt động hằng ngày. Các tác giả ước tính mỗi năm khoảng 61.000 con cua ẩn sĩ ở đảo Henderson và 508.000 con ở quần đảo Cocos (Keeling) bị mắc kẹt trong rác và chết, và cảnh báo rác tích tụ có thể ảnh hưởng nghiêm trọng đến quần thể cua ẩn sĩ trên các đảo này.",
+    "caveat": "Số lượng là ước tính cho toàn đảo mỗi năm, không phải số con được đếm trực tiếp.",
+    "message": "Rác không chỉ hại sinh vật dưới biển — trên bờ, nó cũng thành bẫy. Không để ly nhựa trở thành rác là bước đầu tiên.",
+    "source": {
+      "title": "Entrapment in plastic debris endangers hermit crabs",
+      "authors": ["Jennifer L. Lavers", "Paul B. Sharp", "Silke Stuckenbrock", "Alexander L. Bond"],
+      "journal": "Journal of Hazardous Materials",
+      "year": 2020,
+      "volume": "387",
+      "pages": "121703",
+      "doi": "10.1016/j.jhazmat.2019.121703",
+      "url": "https://doi.org/10.1016/j.jhazmat.2019.121703"
+    }
+  },
+  {
+    "slug": "coral-reefs-plastic-disease",
+    "title": "San hô vướng rác nhựa dễ mắc bệnh hơn",
+    "species": "San hô tạo rạn — 124.000 tập đoàn san hô ở 159 rạn",
+    "icon": "🪸",
+    "summary": "Nhóm nghiên cứu khảo sát 124.000 tập đoàn san hô tạo rạn tại 159 rạn san hô ở khu vực châu Á – Thái Bình Dương. Khi san hô tiếp xúc với rác nhựa, khả năng mắc bệnh tăng từ 4% lên 89%. San hô có cấu trúc phức tạp có khả năng bị nhựa vướng vào cao gấp 8 lần. Lượng nhựa trên các rạn tương ứng với ước tính lượng rác nhựa từ đất liền không được quản lý đổ ra biển. Các tác giả ước tính khoảng 11,1 tỷ vật thể nhựa đang vướng trên rạn san hô trong khu vực và dự báo con số này tăng 40% vào năm 2025.",
+    "caveat": "Đây là mối liên hệ quan sát được ngoài tự nhiên (tương quan) giữa nhựa và bệnh san hô; dự báo cho năm 2025 được đưa ra trong bài báo năm 2018.",
+    "message": "Nhựa trên rạn san hô gắn với rác thải từ đất liền — bớt ly nhựa dùng một lần ở căn tin cũng là góp phần.",
+    "source": {
+      "title": "Plastic waste associated with disease on coral reefs",
+      "authors": ["Joleah B. Lamb", "Bette L. Willis", "Evan A. Fiorenza", "Courtney S. Couch", "Robert Howard", "Douglas N. Rader", "James D. True", "Lisa A. Kelly", "Awaludinnoer Ahmad", "Jamaluddin Jompa", "C. Drew Harvell"],
+      "journal": "Science",
+      "year": 2018,
+      "volume": "359",
+      "issue": "6374",
+      "pages": "460–462",
+      "doi": "10.1126/science.aar3320",
+      "url": "https://doi.org/10.1126/science.aar3320"
+    }
+  },
+  {
+    "slug": "manta-whale-shark-microplastics",
+    "title": "Cá đuối manta và cá nhám voi lọc cả vi nhựa",
+    "species": "Cá đuối manta rạn (Mobula alfredi) và cá nhám voi (Rhincodon typus)",
+    "icon": "🦈",
+    "summary": "Tại ba vùng kiếm ăn ven biển Indonesia — Khu bảo tồn biển Nusa Penida, Vườn quốc gia Komodo và Pantai Bentar (Đông Java) — nhóm nghiên cứu lấy mẫu nước bằng lưới sinh vật phù du và đếm rác nổi trong mùa mưa và mùa khô giai đoạn 2016–2018. Lượng nhựa vào mùa mưa có thể cao gấp khoảng 44 lần mùa khô. Từ lượng nước các loài này lọc khi kiếm ăn, các tác giả ước tính cá đuối manta có thể nuốt tới khoảng 63 mảnh nhựa mỗi giờ ở Nusa Penida và 25 mảnh mỗi giờ ở Komodo, còn cá nhám voi khoảng 137 mảnh mỗi giờ ở Java. Phân tích chất thải của cá đuối manta xác nhận chúng có nuốt nhựa.",
+    "caveat": "Tốc độ nuốt nhựa là ước tính lý thuyết (mật độ nhựa trong nước nhân với lượng nước lọc), ở mức cận trên; việc nuốt nhựa chỉ được xác nhận trực tiếp ở cá đuối manta qua mẫu chất thải.",
+    "message": "Mỗi ly nhựa không thải ra là bớt một nguồn rác cho biển — nơi những loài khổng lồ này kiếm ăn.",
+    "source": {
+      "title": "Microplastics on the Menu: Plastics Pollute Indonesian Manta Ray and Whale Shark Feeding Grounds",
+      "authors": ["Elitza S. Germanov", "Andrea D. Marshall", "I. Gede Hendrawan", "Ryan Admiraal", "Christoph A. Rohner", "Janis Argeswara", "Raka Wulandari", "Mahardika R. Himawan", "Neil R. Loneragan"],
+      "journal": "Frontiers in Marine Science",
+      "year": 2019,
+      "volume": "6",
+      "pages": "679",
+      "doi": "10.3389/fmars.2019.00679",
+      "url": "https://doi.org/10.3389/fmars.2019.00679"
+    }
+  },
+  {
+    "slug": "grey-seals-entanglement-cornwall",
+    "title": "Hải cẩu xám vướng rác ở Cornwall",
+    "species": "Hải cẩu xám (Halichoerus grypus)",
+    "icon": "🦭",
+    "summary": "Dựa trên hồ sơ quan sát và danh mục ảnh nhận dạng từng cá thể tại một bãi nghỉ của hải cẩu ở Cornwall (tây nam nước Anh), nhóm nghiên cứu ghi nhận tỉ lệ hải cẩu xám bị vướng rác trung bình mỗi năm từ 3,6% đến 5% trong giai đoạn 2004–2008. Trong 58 trường hợp vướng rác, 64% có vết thương được đánh giá là nghiêm trọng. Ở 15 trường hợp nhìn thấy được vật gây vướng, 14 trường hợp là vật liệu từ nghề cá. Khoảng thời gian tối đa mà hải cẩu bị vướng còn được nhìn thấy lại ngắn hơn đáng kể so với nhóm đối chứng, gợi ý tỉ lệ tử vong cao hơn.",
+    "caveat": "Dữ liệu quan sát tại một địa điểm; tỉ lệ tử vong cao hơn là suy luận của các tác giả, chưa được đo trực tiếp.",
+    "message": "Rác trên biển có thể siết và gây thương tích cho động vật. Bớt rác thải từ thói quen hằng ngày là phần việc ai cũng làm được.",
+    "source": {
+      "title": "Entanglement of grey seals Halichoerus grypus at a haul out site in Cornwall, UK",
+      "authors": ["Rebecca Allen", "Dan Jarvis", "Sue Sayer", "Cheryl Mills"],
+      "journal": "Marine Pollution Bulletin",
+      "year": 2012,
+      "volume": "64",
+      "issue": "12",
+      "pages": "2815–2819",
+      "doi": "10.1016/j.marpolbul.2012.09.005",
+      "url": "https://doi.org/10.1016/j.marpolbul.2012.09.005"
+    }
+  },
+  {
+    "slug": "magellanic-penguins-debris-brazil",
+    "title": "Chim cánh cụt Magellan và ống hút nhựa trong dạ dày",
+    "species": "Chim cánh cụt Magellan (Spheniscus magellanicus)",
+    "icon": "🐧",
+    "summary": "Chim cánh cụt Magellan đến bờ biển Brazil vào mùa đông, ngoài mùa sinh sản. Trong các năm 2008 và 2010, nhóm nghiên cứu tìm thấy đồ nhựa và các loại rác biển khác trong dạ dày và ruột của 15% trong số 175 con chim cánh cụt chết được thu thập ở vùng Lagos, bang Rio de Janeiro. Một con bị ống hút nhựa đâm thủng dạ dày — có thể là nguyên nhân khiến nó chết.",
+    "caveat": "Các tác giả lưu ý chưa rõ việc nuốt rác ảnh hưởng đến tỉ lệ tử vong của loài này ở mức nào, và tỉ lệ ở chim chết dạt bờ có phản ánh toàn bộ quần thể hay không.",
+    "message": "Ống hút hay ly nhựa dùng một lần tưởng nhỏ nhưng có thể thành rác biển. Mang bình/ly cá nhân là bớt một món nhựa dùng một lần.",
+    "source": {
+      "title": "Marine debris ingestion by Magellanic penguins, Spheniscus magellanicus (Aves: Sphenisciformes), from the Brazilian coastal zone",
+      "authors": ["Martha L. Brandão", "Karina M. Braga", "José L. Luque"],
+      "journal": "Marine Pollution Bulletin",
+      "year": 2011,
+      "volume": "62",
+      "issue": "10",
+      "pages": "2246–2249",
+      "doi": "10.1016/j.marpolbul.2011.07.016",
+      "url": "https://doi.org/10.1016/j.marpolbul.2011.07.016"
+    }
+  }
+]

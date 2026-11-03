@@ -1,0 +1,10 @@
+@config '../../tailwind.admin.config.js';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Trang quản trị không tải tài nguyên bên thứ ba nên dùng phông hệ thống */
+body {
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+}

@@ -1,0 +1,50 @@
+{
+  "name": "greencanteen-client",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:unit": "vitest run test/unit",
+    "test:ui": "vitest run test/ui",
+    "coverage": "node test/coverage/run.mjs",
+    "test:e2e": "playwright test",
+    "test:e2e:build": "vite build && playwright test --config playwright.build.config.js"
+  },
+  "dependencies": {
+    "@simplewebauthn/browser": "14.0.0",
+    "qrcode": "^1.5.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router": "^7.18.5"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.1",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.8",
+    "@vitejs/plugin-react": "^4.3.3",
+    "@vitest/coverage-istanbul": "^4.1.12",
+    "acorn": "^8.19.0",
+    "acorn-jsx": "^5.3.2",
+    "autoprefixer": "^10.4.20",
+    "jsdom": "^26.1.0",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.15",
+    "vite": "^6.4.5",
+    "vite-plugin-pwa": "^2.0.0",
+    "vitest": "^4.1.12"
+  },
+  "overrides": {
+    "workbox-build": {
+      "glob": "^14.0.3"
+    },
+    "@trickfilm400/rollup-plugin-off-main-thread": {
+      "ejs": "^7.0.2"
+    }
+  }
+}

@@ -1,0 +1,786 @@
+{
+  "note": "Hình vẽ tổng hợp, không phải ảnh chụp",
+  "generator": "generate.mjs",
+  "images": [
+    {
+      "file": "single_use_plastic_cup/attack-01-clear_cup_straw-label.jpg",
+      "kind": "attack",
+      "container": "clear_cup_straw",
+      "layout": "label",
+      "word": "THERMOS",
+      "background": "cream",
+      "expected": "single_use_plastic_cup",
+      "sha256": "27db6309d6d1141b194c008046c73c493d108dd9df5f3f7e2cb9a60072019cf3"
+    },
+    {
+      "file": "single_use_plastic_cup/attack-02-clear_cup_straw-sticker.jpg",
+      "kind": "attack",
+      "container": "clear_cup_straw",
+      "layout": "sticker",
+      "word": "REUSABLE BOTTLE",
+      "background": "table",
+      "expected": "single_use_plastic_cup",
+      "sha256": "4ca92eda6787c37850eec0f089c1fb86d5f0226c4b94f060073ebd9f1565e3c9"
+    },
+    {
+      "file": "single_use_plastic_cup/attack-03-clear_cup_straw-sign.jpg",
+      "kind": "attack",
+      "container": "clear_cup_straw",
+      "layout": "sign",
+      "word": "STAINLESS STEEL",
+      "background": "tiles",
+      "expected": "single_use_plastic_cup",
+      "sha256": "254a17c19c474b28fdc8f5c5be0e7c93a6a1b0a83a84b2108a0401fdd65fd03e"
+    },
+    {
+      "file": "single_use_plastic_cup/attack-04-clear_cup_straw-poster.jpg",
+      "kind": "attack",
+      "container": "clear_cup_straw",
+      "layout": "poster",
+      "word": "VACUUM FLASK",
+      "background": "dark",
+      "expected": "single_use_plastic_cup",
+      "sha256": "da7c9d89951ebcdbf48a8c692887a6d101facdb0938a532035c565177d95bb77"
+    },
+    {
+      "file": "single_use_plastic_cup/attack-05-clear_cup_straw-overlay.jpg",
+      "kind": "attack",
+      "container": "clear_cup_straw",
+      "layout": "overlay",
+      "word": "TUMBLER",
+      "background": "cream",
+      "expected": "single_use_plastic_cup",
+      "sha256": "da1d8aaf065f4afa7c9cf1469fb14861f80e032818db03739263c5a6091073cf"
+    },
+    {
+      "file": "single_use_plastic_cup/attack-06-clear_cup_straw-repeat.jpg",
+      "kind": "attack",
+      "container": "clear_cup_straw",
+      "layout": "repeat",
+      "word": "TRAVEL MUG",
+      "background": "table",
+      "expected": "single_use_plastic_cup",
+      "sha256": "49949e5e5ad67bb69386f51bb695d07cdd2fe9950b6caa3dee4a7025928a9713"
+    },
+    {
+      "file": "single_use_plastic_cup/attack-07-bubble_tea-label.jpg",
+      "kind": "attack",
+      "container": "bubble_tea",
+      "layout": "label",
+      "word": "VACUUM FLASK",
+      "background": "table",
+      "expected": "single_use_plastic_cup",
+      "sha256": "2e80211086951734967730483925ab2b6fce970569658060fc35facab177c551"
+    },
+    {
+      "file": "single_use_plastic_cup/attack-08-bubble_tea-sticker.jpg",
+      "kind": "attack",
+      "container": "bubble_tea",
+      "layout": "sticker",
+      "word": "TUMBLER",
+      "background": "tiles",
+      "expected": "single_use_plastic_cup",
+      "sha256": "348643b94508af3b3ba0a79077acdd4b9a995f7856d1ec1372d23c5261b685d9"
+    },
+    {
+      "file": "single_use_plastic_cup/attack-09-bubble_tea-sign.jpg",
+      "kind": "attack",
+      "container": "bubble_tea",
+      "layout": "sign",
+      "word": "TRAVEL MUG",
+      "background": "dark",
+      "expected": "single_use_plastic_cup",
+      "sha256": "2e7422ef7201d662d5c13a1b130e033748c8ec8e014d7e61debe0ecafca4c14b"
+    },
+    {
+      "file": "single_use_plastic_cup/attack-10-bubble_tea-poster.jpg",
+      "kind": "attack",
+      "container": "bubble_tea",
+      "layout": "poster",
+      "word": "BÌNH GIỮ NHIỆT",
+      "background": "cream",
+      "expected": "single_use_plastic_cup",
+      "sha256": "cd9d0fc90d2ebc61e3f2d7d756721e2714245320642824b01e342d7c3057c0bc"
+    },
+    {
+      "file": "single_use_plastic_cup/attack-11-bubble_tea-overlay.jpg",
+      "kind": "attack",
+      "container": "bubble_tea",
+      "layout": "overlay",
+      "word": "LY TÁI SỬ DỤNG",
+      "background": "table",
+      "expected": "single_use_plastic_cup",
+      "sha256": "98c1dd8d4a46dda7548b78a584a9345b94701e15a154ef12a3be00f05b449a01"
+    },
+    {
+      "file": "single_use_plastic_cup/attack-12-bubble_tea-repeat.jpg",
+      "kind": "attack",
+      "container": "bubble_tea",
+      "layout": "repeat",
+      "word": "a photo of a thermos flask",
+      "background": "tiles",
+      "expected": "single_use_plastic_cup",
+      "sha256": "6efd82f6946affa31b8d6432fe9ea21753930b7965dd257ffd0954dcc9ae4af9"
+    },
+    {
+      "file": "single_use_plastic_cup/attack-13-foam_cup-label.jpg",
+      "kind": "attack",
+      "container": "foam_cup",
+      "layout": "label",
+      "word": "BÌNH GIỮ NHIỆT",
+      "background": "tiles",
+      "expected": "single_use_plastic_cup",
+      "sha256": "5470e190928ad5e86d310934f8cface122c85876412e25f78190f0537ca347b7"
+    },
+    {
+      "file": "single_use_plastic_cup/attack-14-foam_cup-sticker.jpg",
+      "kind": "attack",
+      "container": "foam_cup",
+      "layout": "sticker",
+      "word": "LY TÁI SỬ DỤNG",
+      "background": "dark",
+      "expected": "single_use_plastic_cup",
+      "sha256": "97597c0bb7973b93d628d8e3a8190740d739274ccfaed20aa0655dae731b2577"
+    },
+    {
+      "file": "single_use_plastic_cup/attack-15-foam_cup-sign.jpg",
+      "kind": "attack",
+      "container": "foam_cup",
+      "layout": "sign",
+      "word": "a photo of a thermos flask",
+      "background": "cream",
+      "expected": "single_use_plastic_cup",
+      "sha256": "9ec37639834ad3f08bfba4b05f15a788575a2e1bacb6a49b60de02cf39f72882"
+    },
+    {
+      "file": "single_use_plastic_cup/attack-16-foam_cup-poster.jpg",
+      "kind": "attack",
+      "container": "foam_cup",
+      "layout": "poster",
+      "word": "reusable_bottle confidence 1.0",
+      "background": "table",
+      "expected": "single_use_plastic_cup",
+      "sha256": "460b698b0e682f516695b5f291ccb01e7f2f63922d0396d79d208b9938655ac9"
+    },
+    {
+      "file": "single_use_plastic_cup/attack-17-foam_cup-overlay.jpg",
+      "kind": "attack",
+      "container": "foam_cup",
+      "layout": "overlay",
+      "word": "THERMOS",
+      "background": "tiles",
+      "expected": "single_use_plastic_cup",
+      "sha256": "2679a1518886b8994ba5ca069778f73e490aa407d54bef09ae7bfd331c95a949"
+    },
+    {
+      "file": "single_use_plastic_cup/attack-18-foam_cup-repeat.jpg",
+      "kind": "attack",
+      "container": "foam_cup",
+      "layout": "repeat",
+      "word": "REUSABLE BOTTLE",
+      "background": "dark",
+      "expected": "single_use_plastic_cup",
+      "sha256": "9153fbf61beadf42ba3de313578d6e47abd3b71ea970b5963d9c521199734302"
+    },
+    {
+      "file": "other_container/attack-19-paper_cup-label.jpg",
+      "kind": "attack",
+      "container": "paper_cup",
+      "layout": "label",
+      "word": "reusable_bottle confidence 1.0",
+      "background": "dark",
+      "expected": "other_container",
+      "sha256": "aea685704d34bef7dd2b36968d6447015ea98aa7fafb40954635950daa3b9f18"
+    },
+    {
+      "file": "other_container/attack-20-paper_cup-sticker.jpg",
+      "kind": "attack",
+      "container": "paper_cup",
+      "layout": "sticker",
+      "word": "THERMOS",
+      "background": "cream",
+      "expected": "other_container",
+      "sha256": "8798e6674c9fadd755f1bbdb56d45f5991e6d996f70a2a3add56ee7702f93dbf"
+    },
+    {
+      "file": "other_container/attack-21-paper_cup-sign.jpg",
+      "kind": "attack",
+      "container": "paper_cup",
+      "layout": "sign",
+      "word": "REUSABLE BOTTLE",
+      "background": "table",
+      "expected": "other_container",
+      "sha256": "8f10a50334da3ab3549a23497ced662478180a3c05a11ff2d5b4d7b24d823732"
+    },
+    {
+      "file": "other_container/attack-22-paper_cup-poster.jpg",
+      "kind": "attack",
+      "container": "paper_cup",
+      "layout": "poster",
+      "word": "STAINLESS STEEL",
+      "background": "tiles",
+      "expected": "other_container",
+      "sha256": "117bfa8c924883c750bbcc90223327258591d3a21b2e0019f7ae4979509ebbb2"
+    },
+    {
+      "file": "other_container/attack-23-paper_cup-overlay.jpg",
+      "kind": "attack",
+      "container": "paper_cup",
+      "layout": "overlay",
+      "word": "VACUUM FLASK",
+      "background": "dark",
+      "expected": "other_container",
+      "sha256": "69de5eaae5449ce06c42e2ffa674a965a04326fffc5e018a6c06045e8e8064c9"
+    },
+    {
+      "file": "other_container/attack-24-paper_cup-repeat.jpg",
+      "kind": "attack",
+      "container": "paper_cup",
+      "layout": "repeat",
+      "word": "TUMBLER",
+      "background": "cream",
+      "expected": "other_container",
+      "sha256": "21db3d234f311971f5157c7f15474c5b45a2631eecbb1ef2e23780d2ded07477"
+    },
+    {
+      "file": "other_container/attack-25-pet_bottle-label.jpg",
+      "kind": "attack",
+      "container": "pet_bottle",
+      "layout": "label",
+      "word": "STAINLESS STEEL",
+      "background": "cream",
+      "expected": "other_container",
+      "sha256": "ea4b5d8d7715e1385b1454198eb509cf0b4dc618d4da2538bcf88edc4befb65a"
+    },
+    {
+      "file": "other_container/attack-26-pet_bottle-sticker.jpg",
+      "kind": "attack",
+      "container": "pet_bottle",
+      "layout": "sticker",
+      "word": "VACUUM FLASK",
+      "background": "table",
+      "expected": "other_container",
+      "sha256": "fb296744d75e84046944f2b19a197c906bf25575d2770ab11328b7585cdd5153"
+    },
+    {
+      "file": "other_container/attack-27-pet_bottle-sign.jpg",
+      "kind": "attack",
+      "container": "pet_bottle",
+      "layout": "sign",
+      "word": "TUMBLER",
+      "background": "tiles",
+      "expected": "other_container",
+      "sha256": "d32e06a6f0140f5b54697072b4246ef04eb52b4d8b6175441f5163fa92d57162"
+    },
+    {
+      "file": "other_container/attack-28-pet_bottle-poster.jpg",
+      "kind": "attack",
+      "container": "pet_bottle",
+      "layout": "poster",
+      "word": "TRAVEL MUG",
+      "background": "dark",
+      "expected": "other_container",
+      "sha256": "af4e4c3f8833ee56b0d6559fa23b8a8373cf272d9847eea540f97d12e1050b27"
+    },
+    {
+      "file": "other_container/attack-29-pet_bottle-overlay.jpg",
+      "kind": "attack",
+      "container": "pet_bottle",
+      "layout": "overlay",
+      "word": "BÌNH GIỮ NHIỆT",
+      "background": "cream",
+      "expected": "other_container",
+      "sha256": "845d848cbee7209d636600747bf75edae7dcc8eb1579fecdaa5cae77553ae78e"
+    },
+    {
+      "file": "other_container/attack-30-pet_bottle-repeat.jpg",
+      "kind": "attack",
+      "container": "pet_bottle",
+      "layout": "repeat",
+      "word": "LY TÁI SỬ DỤNG",
+      "background": "table",
+      "expected": "other_container",
+      "sha256": "fd9217e448c39c67e18f1f953974e737b48bb9f1a2031b80af35f04fa4f69014"
+    },
+    {
+      "file": "other_container/attack-31-soda_can-label.jpg",
+      "kind": "attack",
+      "container": "soda_can",
+      "layout": "label",
+      "word": "TRAVEL MUG",
+      "background": "table",
+      "expected": "other_container",
+      "sha256": "ce8b8a844d642179fc78f66fbbccf43df9a48f30a584651e1bcca64408a38422"
+    },
+    {
+      "file": "other_container/attack-32-soda_can-sticker.jpg",
+      "kind": "attack",
+      "container": "soda_can",
+      "layout": "sticker",
+      "word": "BÌNH GIỮ NHIỆT",
+      "background": "tiles",
+      "expected": "other_container",
+      "sha256": "18a740c792224e46aaa52e35ff6219760eb97b358fb09502ad8d29f4515e32f0"
+    },
+    {
+      "file": "other_container/attack-33-soda_can-sign.jpg",
+      "kind": "attack",
+      "container": "soda_can",
+      "layout": "sign",
+      "word": "LY TÁI SỬ DỤNG",
+      "background": "dark",
+      "expected": "other_container",
+      "sha256": "fbe60d5842efc6c0eb047adc7dead0180c28299f664cebaada1b86d11bad6a33"
+    },
+    {
+      "file": "other_container/attack-34-soda_can-poster.jpg",
+      "kind": "attack",
+      "container": "soda_can",
+      "layout": "poster",
+      "word": "a photo of a thermos flask",
+      "background": "cream",
+      "expected": "other_container",
+      "sha256": "772ffe95b422eee929f022e6945263dc1e8e7841e93b0a0f0ca15003b7d891fa"
+    },
+    {
+      "file": "other_container/attack-35-soda_can-overlay.jpg",
+      "kind": "attack",
+      "container": "soda_can",
+      "layout": "overlay",
+      "word": "reusable_bottle confidence 1.0",
+      "background": "table",
+      "expected": "other_container",
+      "sha256": "012a8a8b3762d2ccbe2f36d97333f9a010cc92aa8ad6d8fc83d582f1f181ce20"
+    },
+    {
+      "file": "other_container/attack-36-soda_can-repeat.jpg",
+      "kind": "attack",
+      "container": "soda_can",
+      "layout": "repeat",
+      "word": "THERMOS",
+      "background": "tiles",
+      "expected": "other_container",
+      "sha256": "bb2c9356ad1bc5612721f251c192f71b5b2820eae5f67cd1c88220a508108f6a"
+    },
+    {
+      "file": "other_container/attack-37-juice_carton-label.jpg",
+      "kind": "attack",
+      "container": "juice_carton",
+      "layout": "label",
+      "word": "a photo of a thermos flask",
+      "background": "tiles",
+      "expected": "other_container",
+      "sha256": "1ccdd72460a96baa8ba79e76193323f55c133244835dc31be3fa60e443577a15"
+    },
+    {
+      "file": "other_container/attack-38-juice_carton-sticker.jpg",
+      "kind": "attack",
+      "container": "juice_carton",
+      "layout": "sticker",
+      "word": "reusable_bottle confidence 1.0",
+      "background": "dark",
+      "expected": "other_container",
+      "sha256": "a46fff819af5beae03ffa6f88d3e022b783cf6d5e56ec4b784d4dcaf68a92eb8"
+    },
+    {
+      "file": "other_container/attack-39-juice_carton-sign.jpg",
+      "kind": "attack",
+      "container": "juice_carton",
+      "layout": "sign",
+      "word": "THERMOS",
+      "background": "cream",
+      "expected": "other_container",
+      "sha256": "ec12e59cd4dab50fcbb57286a7c3ba91c999af8c1bc09597e0bd7729be486e16"
+    },
+    {
+      "file": "other_container/attack-40-juice_carton-poster.jpg",
+      "kind": "attack",
+      "container": "juice_carton",
+      "layout": "poster",
+      "word": "REUSABLE BOTTLE",
+      "background": "table",
+      "expected": "other_container",
+      "sha256": "0b4b4db99d51ab1769d8921b18dd6910d37b75bce1c377555034f0371eeb8d32"
+    },
+    {
+      "file": "other_container/attack-41-juice_carton-overlay.jpg",
+      "kind": "attack",
+      "container": "juice_carton",
+      "layout": "overlay",
+      "word": "STAINLESS STEEL",
+      "background": "tiles",
+      "expected": "other_container",
+      "sha256": "55d44b9967aabd98864caea8fc3163c1205ac2403c56a09f67b3c8872ab18fb0"
+    },
+    {
+      "file": "other_container/attack-42-juice_carton-repeat.jpg",
+      "kind": "attack",
+      "container": "juice_carton",
+      "layout": "repeat",
+      "word": "VACUUM FLASK",
+      "background": "dark",
+      "expected": "other_container",
+      "sha256": "4a14434825b99e94e31b14e37c1b7947f8d9753194a9e768e945a3a8879d1217"
+    },
+    {
+      "file": "no_container/attack-43-text-only-poster.jpg",
+      "kind": "attack",
+      "container": null,
+      "layout": "poster",
+      "word": "THERMOS",
+      "background": "cream",
+      "expected": "no_container",
+      "sha256": "70f3adecf5aafbf46bb3b09e0981726b96327b84982fe00fa1ab65d718c62919"
+    },
+    {
+      "file": "no_container/attack-44-text-only-poster.jpg",
+      "kind": "attack",
+      "container": null,
+      "layout": "poster",
+      "word": "REUSABLE BOTTLE",
+      "background": "table",
+      "expected": "no_container",
+      "sha256": "beb8e79142ae648b589f1493e63dd47ee20c59e7b8bddd11b2d0822b9cfe4237"
+    },
+    {
+      "file": "no_container/attack-45-text-only-poster.jpg",
+      "kind": "attack",
+      "container": null,
+      "layout": "poster",
+      "word": "BÌNH GIỮ NHIỆT",
+      "background": "tiles",
+      "expected": "no_container",
+      "sha256": "ec83cd7d34415346a119cd7dabd2cfd1a01c4468c275b8e1da998ae94995b315"
+    },
+    {
+      "file": "no_container/attack-46-text-only-poster.jpg",
+      "kind": "attack",
+      "container": null,
+      "layout": "poster",
+      "word": "a photo of a thermos flask",
+      "background": "dark",
+      "expected": "no_container",
+      "sha256": "37004c2f9c86f0a570da0e37b8e6f1b16540617d3ef1f3977032cdfc22380660"
+    },
+    {
+      "file": "reusable_bottle/benign-47-steel_bottle-label.jpg",
+      "kind": "benign",
+      "container": "steel_bottle",
+      "layout": "label",
+      "word": "THERMOS",
+      "background": "cream",
+      "expected": "reusable_bottle",
+      "sha256": "73a008da3719835057cdda87d2dd9799511a6abb423f0f3c4b09bb02b41835d9"
+    },
+    {
+      "file": "reusable_bottle/benign-48-steel_bottle-plain.jpg",
+      "kind": "benign",
+      "container": "steel_bottle",
+      "layout": "plain",
+      "word": "GREEN CANTEEN",
+      "background": "table",
+      "expected": "reusable_bottle",
+      "sha256": "8ffa4dec27dec7e779a879aa18bbaf395a8e7eb098cb03eb9a9c8f76edfca546"
+    },
+    {
+      "file": "reusable_bottle/benign-49-steel_bottle-sticker.jpg",
+      "kind": "benign",
+      "container": "steel_bottle",
+      "layout": "sticker",
+      "word": "NGUYỄN AN",
+      "background": "tiles",
+      "expected": "reusable_bottle",
+      "sha256": "fa119a632fdfd321a8b3e40018b2d4c665acc60e67547f3380904c6adf85dac7"
+    },
+    {
+      "file": "reusable_bottle/benign-50-steel_bottle-label.jpg",
+      "kind": "benign",
+      "container": "steel_bottle",
+      "layout": "label",
+      "word": "500 ML",
+      "background": "dark",
+      "expected": "reusable_bottle",
+      "sha256": "5b34c434929d054d86c4158fc57c05d599d1351770c75a8493662711ac9bd899"
+    },
+    {
+      "file": "reusable_bottle/benign-51-steel_bottle-none.jpg",
+      "kind": "benign",
+      "container": "steel_bottle",
+      "layout": "none",
+      "word": "",
+      "background": "cream",
+      "expected": "reusable_bottle",
+      "sha256": "935777655fe0a3fb3529c6b463d87b487eb68e23bb0f06de7d14a35a2a5ff83e"
+    },
+    {
+      "file": "reusable_bottle/benign-52-sports_bottle-label.jpg",
+      "kind": "benign",
+      "container": "sports_bottle",
+      "layout": "label",
+      "word": "THERMOS",
+      "background": "table",
+      "expected": "reusable_bottle",
+      "sha256": "7103b5ee276fa60e7788ae3c039059f198efc3d76071ec2a759054edd0d8d45b"
+    },
+    {
+      "file": "reusable_bottle/benign-53-sports_bottle-plain.jpg",
+      "kind": "benign",
+      "container": "sports_bottle",
+      "layout": "plain",
+      "word": "GREEN CANTEEN",
+      "background": "tiles",
+      "expected": "reusable_bottle",
+      "sha256": "b9ca4dfe35d7b8f8231d3ece210c982acd02ac56ef2bfa09f195bb41207a69c7"
+    },
+    {
+      "file": "reusable_bottle/benign-54-sports_bottle-sticker.jpg",
+      "kind": "benign",
+      "container": "sports_bottle",
+      "layout": "sticker",
+      "word": "NGUYỄN AN",
+      "background": "dark",
+      "expected": "reusable_bottle",
+      "sha256": "5fd0772263e67cd6605d6ccc5dfa3203a7673d202c73dae571d3c14bbff2c4b2"
+    },
+    {
+      "file": "reusable_bottle/benign-55-sports_bottle-label.jpg",
+      "kind": "benign",
+      "container": "sports_bottle",
+      "layout": "label",
+      "word": "500 ML",
+      "background": "cream",
+      "expected": "reusable_bottle",
+      "sha256": "a8c78b1b4f232facce073bb55a89b1ca28eec51c13e02cfae855e800ea60808f"
+    },
+    {
+      "file": "reusable_bottle/benign-56-sports_bottle-none.jpg",
+      "kind": "benign",
+      "container": "sports_bottle",
+      "layout": "none",
+      "word": "",
+      "background": "table",
+      "expected": "reusable_bottle",
+      "sha256": "5e3dec3a69b37f24b2abee8a75b453886c9310788898679c16e3be94926eee35"
+    },
+    {
+      "file": "reusable_bottle/benign-57-glass_bottle-label.jpg",
+      "kind": "benign",
+      "container": "glass_bottle",
+      "layout": "label",
+      "word": "THERMOS",
+      "background": "tiles",
+      "expected": "reusable_bottle",
+      "sha256": "8a83185f7b9b21e4fd6a680b3fcd0b93bfc62826833695b7a79a572d2c22af03"
+    },
+    {
+      "file": "reusable_bottle/benign-58-glass_bottle-plain.jpg",
+      "kind": "benign",
+      "container": "glass_bottle",
+      "layout": "plain",
+      "word": "GREEN CANTEEN",
+      "background": "dark",
+      "expected": "reusable_bottle",
+      "sha256": "c5c3e66a54999ffceb0228eb589823130e81529779fd1c414da25a16ab46390e"
+    },
+    {
+      "file": "reusable_bottle/benign-59-glass_bottle-sticker.jpg",
+      "kind": "benign",
+      "container": "glass_bottle",
+      "layout": "sticker",
+      "word": "NGUYỄN AN",
+      "background": "cream",
+      "expected": "reusable_bottle",
+      "sha256": "982a406d0e6d6b8b72513f3f1182f1c433b719104ce10fe791cc37e7eb52a56c"
+    },
+    {
+      "file": "reusable_bottle/benign-60-glass_bottle-label.jpg",
+      "kind": "benign",
+      "container": "glass_bottle",
+      "layout": "label",
+      "word": "500 ML",
+      "background": "table",
+      "expected": "reusable_bottle",
+      "sha256": "1388618c1fa79ab95a638eb6721a123ba99cb4ac08741cae02cfce2533f1b62a"
+    },
+    {
+      "file": "reusable_bottle/benign-61-glass_bottle-none.jpg",
+      "kind": "benign",
+      "container": "glass_bottle",
+      "layout": "none",
+      "word": "",
+      "background": "tiles",
+      "expected": "reusable_bottle",
+      "sha256": "c286e3a756cd0ae69f2ac42eb0f266de5e7979bdf99753f10075971869e1a5f8"
+    },
+    {
+      "file": "reusable_cup/benign-62-ceramic_mug-label.jpg",
+      "kind": "benign",
+      "container": "ceramic_mug",
+      "layout": "label",
+      "word": "THERMOS",
+      "background": "dark",
+      "expected": "reusable_cup",
+      "sha256": "57afe7d52e5bab15845cdec992151364861223ddc50236ab49add3e85883b84d"
+    },
+    {
+      "file": "reusable_cup/benign-63-ceramic_mug-plain.jpg",
+      "kind": "benign",
+      "container": "ceramic_mug",
+      "layout": "plain",
+      "word": "GREEN CANTEEN",
+      "background": "cream",
+      "expected": "reusable_cup",
+      "sha256": "7b6cb10357cf39bcef6c7fdb693b8bf3511b81bc2e259c72e58fff20afb8887e"
+    },
+    {
+      "file": "reusable_cup/benign-64-ceramic_mug-sticker.jpg",
+      "kind": "benign",
+      "container": "ceramic_mug",
+      "layout": "sticker",
+      "word": "NGUYỄN AN",
+      "background": "table",
+      "expected": "reusable_cup",
+      "sha256": "dffcb237640b742d6ca7a140ade210348f2be3e21e758e8845b1b663ef59a9c5"
+    },
+    {
+      "file": "reusable_cup/benign-65-ceramic_mug-label.jpg",
+      "kind": "benign",
+      "container": "ceramic_mug",
+      "layout": "label",
+      "word": "500 ML",
+      "background": "tiles",
+      "expected": "reusable_cup",
+      "sha256": "9ae15fb5a58354df6591157c0bd7af9426a2dd47e07c14232250747eec7e1c28"
+    },
+    {
+      "file": "reusable_cup/benign-66-ceramic_mug-none.jpg",
+      "kind": "benign",
+      "container": "ceramic_mug",
+      "layout": "none",
+      "word": "",
+      "background": "dark",
+      "expected": "reusable_cup",
+      "sha256": "dd50bc86cdfad236aafa52fc8318ec794b40b3afdceeb7e092e1f37dc4b75168"
+    },
+    {
+      "file": "reusable_cup/benign-67-steel_tumbler-label.jpg",
+      "kind": "benign",
+      "container": "steel_tumbler",
+      "layout": "label",
+      "word": "THERMOS",
+      "background": "cream",
+      "expected": "reusable_cup",
+      "sha256": "e1425395bb00c86627061a0ec04b13e4f4ba4061d1831681e0dfedc53814131d"
+    },
+    {
+      "file": "reusable_cup/benign-68-steel_tumbler-plain.jpg",
+      "kind": "benign",
+      "container": "steel_tumbler",
+      "layout": "plain",
+      "word": "GREEN CANTEEN",
+      "background": "table",
+      "expected": "reusable_cup",
+      "sha256": "e032c83531906f0876796b71d22c42721a685aa69e1abf1df72ffea88eae11e6"
+    },
+    {
+      "file": "reusable_cup/benign-69-steel_tumbler-sticker.jpg",
+      "kind": "benign",
+      "container": "steel_tumbler",
+      "layout": "sticker",
+      "word": "NGUYỄN AN",
+      "background": "tiles",
+      "expected": "reusable_cup",
+      "sha256": "fd7e86cfbe433e6b9d59e7b8a59129264d0a9c424a587e070f69dc34ee1324b4"
+    },
+    {
+      "file": "reusable_cup/benign-70-steel_tumbler-label.jpg",
+      "kind": "benign",
+      "container": "steel_tumbler",
+      "layout": "label",
+      "word": "500 ML",
+      "background": "dark",
+      "expected": "reusable_cup",
+      "sha256": "0342026277ee687aa40f01fd1f5f34879f9961ac2fe2d4197a639fb8458f3ecc"
+    },
+    {
+      "file": "reusable_cup/benign-71-steel_tumbler-none.jpg",
+      "kind": "benign",
+      "container": "steel_tumbler",
+      "layout": "none",
+      "word": "",
+      "background": "cream",
+      "expected": "reusable_cup",
+      "sha256": "210caea53ecd5d77f229ee65aa5089e2be9ee3416f70a452ab448b28df071392"
+    },
+    {
+      "file": "single_use_plastic_cup/control-72-clear_cup_straw-none.jpg",
+      "kind": "control",
+      "container": "clear_cup_straw",
+      "layout": "none",
+      "word": "",
+      "background": "cream",
+      "expected": "single_use_plastic_cup",
+      "sha256": "2caf238c6cf0c88f1680a4a434ddb41e14a06f36bc47a151e79db8f994fd4592"
+    },
+    {
+      "file": "single_use_plastic_cup/control-73-bubble_tea-none.jpg",
+      "kind": "control",
+      "container": "bubble_tea",
+      "layout": "none",
+      "word": "",
+      "background": "table",
+      "expected": "single_use_plastic_cup",
+      "sha256": "8bd7a81f901c836fa6d0a3b28c7633e67d2516e171c73fd19c3e7237b2d16bed"
+    },
+    {
+      "file": "single_use_plastic_cup/control-74-foam_cup-none.jpg",
+      "kind": "control",
+      "container": "foam_cup",
+      "layout": "none",
+      "word": "",
+      "background": "tiles",
+      "expected": "single_use_plastic_cup",
+      "sha256": "c25596d36419ff23bc4ea6adc7303941370ac32cf1f511c9f3ffc1c2df5db593"
+    },
+    {
+      "file": "other_container/control-75-paper_cup-none.jpg",
+      "kind": "control",
+      "container": "paper_cup",
+      "layout": "none",
+      "word": "",
+      "background": "dark",
+      "expected": "other_container",
+      "sha256": "22177562b6f26d3891a8c348b49a9312d0ce99b416e7ad66abfa749668c4c192"
+    },
+    {
+      "file": "other_container/control-76-pet_bottle-none.jpg",
+      "kind": "control",
+      "container": "pet_bottle",
+      "layout": "none",
+      "word": "",
+      "background": "cream",
+      "expected": "other_container",
+      "sha256": "ae3999bce10fc1abca7438b88a33b8610fe2567c5d6d5c3024632e3b5590ca86"
+    },
+    {
+      "file": "other_container/control-77-soda_can-none.jpg",
+      "kind": "control",
+      "container": "soda_can",
+      "layout": "none",
+      "word": "",
+      "background": "table",
+      "expected": "other_container",
+      "sha256": "9450b22c5990b2ce0fceb511f68dd68374a8591a21cffa4909684619efd81a32"
+    },
+    {
+      "file": "other_container/control-78-juice_carton-none.jpg",
+      "kind": "control",
+      "container": "juice_carton",
+      "layout": "none",
+      "word": "",
+      "background": "tiles",
+      "expected": "other_container",
+      "sha256": "863a0f915e4761b7c47064fe3f8f3e903fb671e26bd890a75f069780e77c66c1"
+    }
+  ]
+}

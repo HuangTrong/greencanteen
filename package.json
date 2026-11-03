@@ -1,0 +1,14 @@
+{
+  "name": "greencanteen",
+  "private": true,
+  "scripts": {
+    "setup": "node tools/setup.mjs",
+    "install:all": "npm install --prefix server && npm install --prefix client",
+    "dev:server": "npm run dev --prefix server",
+    "dev:client": "npm run dev --prefix client",
+    "test": "npm test --prefix server && npm test --prefix client",
+    "test:e2e": "npm run test:e2e --prefix client",
+    "test:e2e:build": "npm run test:e2e:build --prefix client",
+    "coverage": "npm run coverage --prefix server && npm run coverage --prefix client"
+  }
+}

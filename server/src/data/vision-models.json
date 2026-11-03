@@ -1,0 +1,26 @@
+{
+  "Xenova/clip-vit-base-patch16": {
+    "revision": "342fdf2f67aded64d138ff074745fb4a5d2bba5f",
+    "license": "OpenAI CLIP (mã nguồn MIT). Model card của OpenAI xếp việc triển khai thực tế ngoài phạm vi khuyến nghị nếu chưa kiểm thử kỹ trên dữ liệu thật — dùng npm run vision:evaluate với ảnh của trường trước khi bật thưởng thật",
+    "files": {
+      "config.json": { "size": 4523, "gitSha1": "fef0743c0313051b5c0c8aa9ee66e16f378c14f6" },
+      "preprocessor_config.json": { "size": 520, "gitSha1": "e0675735fd0052745f2f7b7291e4aa7859389998" },
+      "special_tokens_map.json": { "size": 472, "gitSha1": "2c2130b544c0c5a72d5d00da071ba130a9800fb2" },
+      "tokenizer.json": { "size": 2224081, "gitSha1": "f9d4455c06f24d31797f7cd3e480a83d7a84cb97" },
+      "tokenizer_config.json": { "size": 775, "gitSha1": "c9b2a711cbdd039529fa5a66f1965e13eb14451d" },
+      "onnx/model_quantized.onnx": { "size": 152040303, "sha256": "cf5b03d7c03cd78498b0d59a905552b549ae91af4e99ffb985103aa9424d2272" }
+    }
+  },
+  "Xenova/siglip-base-patch16-224": {
+    "revision": "4649052661e53c7000355844105f8a1792088239",
+    "license": "Apache-2.0 (google/siglip-base-patch16-224)",
+    "files": {
+      "config.json": { "size": 457, "gitSha1": "a3f7c4bb30f55518508b67c96d037da0f1ad37d1" },
+      "preprocessor_config.json": { "size": 368, "gitSha1": "4bcaaaf79e21b6f7d1ed5ff7b8651758823edfe7" },
+      "special_tokens_map.json": { "size": 406, "gitSha1": "828b80e126c18ad4426357ad0647732f0bf7c12b" },
+      "tokenizer.json": { "size": 2398744, "gitSha1": "b6feda4c1249e1ddccc9405e39ebe1ca4c1e091d" },
+      "tokenizer_config.json": { "size": 739, "gitSha1": "7b1371590af4b895fe6446d8eb16b60e0919e93d" },
+      "onnx/model_quantized.onnx": { "size": 210977441, "sha256": "9171eb00c38b9ec82f924877356d008b79e3285dbac7cd10965827bee30c9a99" }
+    }
+  }
+}
