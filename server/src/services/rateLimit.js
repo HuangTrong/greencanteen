@@ -29,6 +29,29 @@ export function createRateLimiter({ name, max, windowMs }) {
     }
   };
 
+  // Một lệnh cập nhật (pipeline) vừa tăng bộ đếm vừa mở cửa sổ mới khi cửa sổ cũ đã hết → không cần khóa. Trả về số lần trong cửa sổ
+  const increment = async (key) => {
+    const now = new Date();
+    const active = { $gt: ['$resetAt', now] };
+    const update = [
+      {
+        $set: {
+          count: { $cond: [active, { $add: ['$count', 1] }, 1] },
+          resetAt: { $cond: [active, '$resetAt', new Date(now.getTime() + resolve(windowMs))] },
+        },
+      },
+    ];
+    let bucket;
+    try {
+      bucket = await RateLimit.findOneAndUpdate({ key: docKey(key) }, update, { upsert: true, new: true }).lean();
+    } catch (err) {
+      // Hai yêu cầu đầu tiên cùng upsert một khóa → một bên trùng khóa unique, thử lại sẽ cập nhật bản đã có
+      if (Number(err?.code) !== 11000) throw err;
+      bucket = await RateLimit.findOneAndUpdate({ key: docKey(key) }, update, { new: true }).lean();
+    }
+    return bucket?.count ?? 1;
+  };
+
   return {
     get windowMs() {
       return resolve(windowMs);
@@ -40,27 +63,12 @@ export function createRateLimiter({ name, max, windowMs }) {
     }),
 
     /** Ghi nhận một lần; trả về true nếu đã vượt giới hạn (tính cả lần này). Nguyên tử: dùng để giữ chỗ trước khi làm việc tốn kém */
-    hit: guarded(async (key) => {
-      const now = new Date();
-      const active = { $gt: ['$resetAt', now] };
-      // Một lệnh cập nhật (pipeline) vừa tăng bộ đếm vừa mở cửa sổ mới khi cửa sổ cũ đã hết → không cần khóa
-      const update = [
-        {
-          $set: {
-            count: { $cond: [active, { $add: ['$count', 1] }, 1] },
-            resetAt: { $cond: [active, '$resetAt', new Date(now.getTime() + resolve(windowMs))] },
-          },
-        },
-      ];
-      let bucket;
-      try {
-        bucket = await RateLimit.findOneAndUpdate({ key: docKey(key) }, update, { upsert: true, new: true }).lean();
-      } catch (err) {
-        // Hai yêu cầu đầu tiên cùng upsert một khóa → một bên trùng khóa unique, thử lại sẽ cập nhật bản đã có
-        if (Number(err?.code) !== 11000) throw err;
-        bucket = await RateLimit.findOneAndUpdate({ key: docKey(key) }, update, { new: true }).lean();
-      }
-      return (bucket?.count ?? 1) > resolve(max);
+    hit: guarded(async (key) => (await increment(key)) > resolve(max)),
+
+    /** Như hit() nhưng trả cả số lần đã đếm trong cửa sổ (1 = lần đầu của khóa này): { count, limited } */
+    consume: guarded(async (key) => {
+      const count = await increment(key);
+      return { count, limited: count > resolve(max) };
     }),
 
     /** Trả lại một lượt đã giữ chỗ bằng hit() khi hóa ra không nên tính (vd. đăng nhập đúng) */

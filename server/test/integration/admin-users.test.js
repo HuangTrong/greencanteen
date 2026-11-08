@@ -4,6 +4,8 @@ import assert from 'node:assert/strict';
 import { User } from '../../src/models/User.js';
 import { CheckIn } from '../../src/models/CheckIn.js';
 import { GachaReward } from '../../src/models/GachaReward.js';
+import { GachaStock } from '../../src/models/GachaStock.js';
+import { publishKeychainConfig } from '../gachaHelpers.js';
 import { PasswordReset } from '../../src/models/PasswordReset.js';
 import { QrLogin } from '../../src/models/QrLogin.js';
 import { RateLimit } from '../../src/models/RateLimit.js';
@@ -136,18 +138,20 @@ describe('tìm kiếm và phân trang', () => {
     }
   });
 
-  test('chi tiết tài khoản: chỉ trường cần thiết, không lộ mã thưởng hay dữ liệu xác thực', async () => {
+  test('chi tiết tài khoản: chỉ trường cần thiết, không lộ mã nhận quà hay dữ liệu xác thực', async () => {
+    await publishKeychainConfig();
     const student = await newStudent();
     await User.updateOne({ _id: student.id }, { $set: { claimCodeHash: 'bi-mat', googleId: 'gid-bi-mat', pendingGachaSpins: 1 } });
-    await student.client.post('/api/gacha/spin');
+    await student.client.post('/api/gacha/draw');
     const reward = await GachaReward.findOne({ userId: student.id }).lean();
     const res = await admin.client.get(`/api/admin/users/${student.id}`);
     assert.equal(res.status, 200);
     assertNoSecrets(res.data);
-    assert.ok(!JSON.stringify(res.data).includes(reward.topUpCode), 'không lộ mã nạp');
+    assert.ok(!JSON.stringify(res.data).includes(reward.claimCode), 'không lộ mã nhận quà');
     assert.ok(!JSON.stringify(res.data).includes('gid-bi-mat'));
     assert.equal(res.data.authMethods.google, true);
     assert.equal(res.data.counts.rewards, 1);
+    assert.equal(res.data.counts.spins, 1);
   });
 
   test('id sai định dạng hoặc không tồn tại → 404', async () => {
@@ -316,7 +320,7 @@ describe('khóa và mở khóa', () => {
     const student = await newStudent();
     await User.updateOne({ _id: student.id }, { $set: { status: 'locked' } });
     assert.equal((await student.client.get('/api/auth/me')).status, 401);
-    assert.equal((await student.client.post('/api/gacha/spin')).status, 401);
+    assert.equal((await student.client.post('/api/gacha/draw')).status, 401);
     assert.equal((await student.client.post('/api/checkin', { form: imageForm(uniquePng()) })).status, 401);
   });
 
@@ -342,13 +346,15 @@ describe('khóa và mở khóa', () => {
     await setStatus(student.id, 'active');
   });
 
-  test('bị khóa giữa lúc đang quay Gacha: lệnh trừ lượt nguyên tử từ chối, không phát thưởng', async () => {
+  test('bị khóa giữa lúc đang quay thưởng: lệnh trừ lượt nguyên tử từ chối, không phát thưởng, trả lại móc khóa đã giữ', async () => {
+    await publishKeychainConfig({ prizes: [{ prizeId: 'khoa-giua-chung', label: 'Lá xanh', probabilityPpm: 1_000_000, enabled: true, maxQuantity: 5 }] });
     const student = await newStudent();
     await User.updateOne({ _id: student.id }, { $set: { pendingGachaSpins: 1 } });
     const user = await User.findById(student.id);
     await User.updateOne({ _id: student.id }, { $set: { status: 'locked' } });
     assert.equal(await spinGacha(user), null);
     assert.equal(await GachaReward.countDocuments({ userId: student.id }), 0);
+    assert.equal((await GachaStock.findById('keychain:khoa-giua-chung').lean()).used, 0);
   });
 
   test('bị khóa đúng lúc đang check-in: không cộng thưởng, ảnh được trả chỗ, báo tài khoản bị khóa', async (t) => {
@@ -413,8 +419,9 @@ describe('đổi mã sinh viên', () => {
 
   test('đổi cả tài khoản và bản sao trong lịch sử; route cũ theo mã SV đi theo mã mới; nhật ký chỉ có giá trị đã che', async () => {
     const student = await newStudent();
+    await publishKeychainConfig();
     await student.client.post('/api/checkin', { form: imageForm(uniquePng()) });
-    await student.client.post('/api/gacha/spin');
+    assert.equal((await student.client.post('/api/gacha/draw')).status, 200);
     const next = `MOI${uniqueSuffix()}`;
     const res = await change(student.id, next);
     assert.equal(res.status, 200);

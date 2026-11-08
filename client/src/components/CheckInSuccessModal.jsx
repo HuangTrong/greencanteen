@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import Modal from './Modal';
+import GachaResult, { RULES_URL } from './GachaResult';
 import { StoryBody, StoryHeader } from './StoryContent';
 import { api } from '../lib/api';
 import { trackClick, trackImpression } from '../lib/analytics';
@@ -16,43 +17,31 @@ export default function CheckInSuccessModal({
   onGachaComplete,
 }) {
   const [phase, setPhase] = useState('story');
-  const [prize, setPrize] = useState(null);
+  const [result, setResult] = useState(null);
   const [spinError, setSpinError] = useState('');
-  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (open) {
       setPhase('story');
-      setPrize(null);
+      setResult(null);
       setSpinError('');
-      setCopied(false);
       if (story?.source?.url) trackImpression(SOURCE_LINK);
     }
   }, [open, story?.slug, story?.source?.url]);
 
-  const runGacha = async () => {
+  const runDraw = async () => {
     setSpinError('');
     setPhase('spinning');
     try {
+      // Hiệu ứng chờ chỉ để trang trí: kết quả do máy chủ rút, không phụ thuộc thời điểm bấm
       await new Promise((r) => setTimeout(r, 1800));
-      const result = await api.gachaSpin();
-      setPrize(result.prize);
-      onGachaComplete?.({ pendingGachaSpins: result.pendingGachaSpins });
-      setPhase('prize');
+      const next = await api.gachaDraw();
+      setResult(next);
+      onGachaComplete?.({ pendingGachaSpins: next.pendingGachaSpins });
+      setPhase('result');
     } catch (err) {
-      setSpinError(err.message || 'Không quay được Gacha');
-      setPhase('story');
-    }
-  };
-
-  const copyCode = async () => {
-    if (!prize?.topUpCode) return;
-    try {
-      await navigator.clipboard.writeText(prize.topUpCode);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      setCopied(false);
+      setSpinError(err.message || 'Không quay được.');
+      setPhase(result ? 'result' : 'story');
     }
   };
 
@@ -63,15 +52,26 @@ export default function CheckInSuccessModal({
     if (phase !== 'spinning') onClose();
   };
 
+  const errorLine = spinError && (
+    <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+      {spinError}
+    </p>
+  );
+
   return (
-    <Modal title={phase === 'prize' ? 'Phần thưởng Gacha' : 'Check-in thành công'} onClose={close}>
+    <Modal title={phase === 'result' ? 'Kết quả quay thưởng' : 'Check-in thành công'} onClose={close}>
       {phase === 'story' && (
         <>
           <div className="border-b border-amber-100 bg-gradient-to-r from-amber-50 via-yellow-50 to-leaf-50 px-4 py-3">
             <p className="text-center text-sm font-extrabold text-stone-800">
-              🎁 Bạn đã nhận {gachaSpinGranted || 1} lượt quay Gacha!
+              🎁 Bạn nhận được {gachaSpinGranted || 1} lượt quay thưởng tri ân!
             </p>
-            <p className="text-center text-[11px] font-semibold text-stone-500">Giải thưởng duy nhất: mã nạp điện thoại</p>
+            <p className="text-center text-[11px] font-semibold text-stone-500">
+              Quà là móc khóa GreenCanteen phiên bản đặc biệt. Trúng hay không hoàn toàn do may mắn.{' '}
+              <a href={RULES_URL} target="_blank" rel="noopener" className="underline underline-offset-2">
+                Thể lệ
+              </a>
+            </p>
           </div>
 
           {story && <StoryHeader story={story} />}
@@ -83,17 +83,13 @@ export default function CheckInSuccessModal({
             </div>
             {classification && <ClassificationLine classification={classification} />}
             {story && <StoryBody story={story} onSourceClick={() => trackClick(SOURCE_LINK)} />}
-            {spinError && (
-              <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
-                {spinError}
-              </p>
-            )}
+            {errorLine}
             <button
               type="button"
-              onClick={runGacha}
+              onClick={runDraw}
               className="w-full rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 py-3.5 text-sm font-extrabold text-white shadow-md"
             >
-              Quay Gacha — Nhận mã nạp điện thoại
+              Quay thưởng tri ân
             </button>
             <button type="button" onClick={close} className="w-full text-sm font-semibold text-stone-500">
               Quay sau (lượt vẫn được lưu)
@@ -104,41 +100,30 @@ export default function CheckInSuccessModal({
 
       {phase === 'spinning' && (
         <div role="status" className="space-y-6 px-6 py-12 text-center">
-          <p className="text-sm font-extrabold text-leaf-800">Đang quay Gacha...</p>
+          <p className="text-sm font-extrabold text-leaf-800">Đang quay thưởng...</p>
           <div className="relative mx-auto h-36 w-36">
-            <div className="absolute inset-0 animate-spin rounded-full border-4 border-dashed border-leaf-300 border-t-amber-500" />
+            <div className="absolute inset-0 rounded-full border-4 border-dashed border-leaf-300 border-t-amber-500 motion-safe:animate-spin" />
             <div className="absolute inset-4 flex items-center justify-center rounded-full bg-gradient-to-br from-leaf-100 to-amber-100 text-4xl">
-              📱
+              🎁
             </div>
           </div>
-          <p className="text-xs font-semibold text-stone-500">100% trúng mã nạp điện thoại</p>
+          <p className="text-xs font-semibold text-stone-500">Máy chủ rút thăm ngẫu nhiên theo thể lệ.</p>
         </div>
       )}
 
-      {phase === 'prize' && prize && (
+      {phase === 'result' && result && (
         <div className="space-y-4 p-6">
-          <div className="text-center">
-            <p className="text-4xl">🎉</p>
-            <h3 className="mt-2 text-xl font-extrabold text-leaf-800">Chúc mừng!</h3>
-            <p className="text-sm font-semibold text-stone-600">{prize.label}</p>
-          </div>
-          <div className="rounded-2xl border-2 border-amber-200 bg-amber-50 p-4 text-center">
-            <p className="text-xs font-bold uppercase text-amber-800">{prize.carrier}</p>
-            <p className="text-2xl font-extrabold text-stone-900">{prize.amountVnd.toLocaleString('vi-VN')}đ</p>
-            <p className="mt-2 break-all rounded-xl bg-white px-3 py-2 font-mono text-sm font-bold text-leaf-800">
-              {prize.topUpCode}
-            </p>
+          <GachaResult result={result} />
+          {errorLine}
+          {result.pendingGachaSpins > 0 && (
             <button
               type="button"
-              onClick={copyCode}
-              className="mt-3 w-full rounded-xl bg-leaf-600 py-2.5 text-sm font-bold text-white"
+              onClick={runDraw}
+              className="w-full rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 py-3 text-sm font-extrabold text-white shadow-md"
             >
-              {copied ? 'Đã sao chép!' : 'Sao chép mã'}
+              Quay tiếp (còn {result.pendingGachaSpins} lượt)
             </button>
-          </div>
-          <p className="text-center text-[11px] text-stone-400">
-            Mã demo cho môi trường thử nghiệm — tích hợp đối tác nạp thật ở bản production.
-          </p>
+          )}
           <button
             type="button"
             onClick={close}

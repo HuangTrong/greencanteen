@@ -3,6 +3,8 @@ import { after, before, beforeEach, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import mongoose from 'mongoose';
 import { AuditLog } from '../../src/models/AuditLog.js';
+import { AuditOutbox } from '../../src/models/AuditOutbox.js';
+import { flushAuditOutbox } from '../../src/services/audit.js';
 import { RateLimit } from '../../src/models/RateLimit.js';
 import { SiteSetting } from '../../src/models/SiteSetting.js';
 import { sanitizeAuditMeta, writeAudit } from '../../src/services/audit.js';
@@ -262,6 +264,74 @@ describe('nhật ký kiểm toán', () => {
     assert.equal(lines.length, 1);
     assert.match(lines[0], /^\[audit-write-failed\] kiem\.thu/);
     assert.ok(!lines[0].includes('user@example.edu.vn'));
+  });
+});
+
+// SEC-07: thao tác ghi của admin không được chạy khi không ghi được dấu vết trước; dấu vết ghi trước được chuyển thành nhật ký nếu
+// bước ghi nhật ký cuối thất bại hoặc server dừng giữa chừng (giống outbox của check-in và quay thưởng)
+describe('SEC-07: nhật ký kiểm toán ghi trước khi thao tác (fail-closed)', () => {
+  const quietly = async (fn) => {
+    const originalError = console.error;
+    console.error = () => {};
+    try {
+      return await fn();
+    } finally {
+      console.error = originalError;
+    }
+  };
+
+  test('không ghi được dấu vết trước → 503 audit_unavailable, dữ liệu không đổi', async () => {
+    const before_ = (await admin.client.get('/api/admin/site-settings')).data;
+    const original = AuditOutbox.create;
+    AuditOutbox.create = async () => {
+      throw new Error('ổ đĩa DB đầy');
+    };
+    let res;
+    try {
+      res = await quietly(() => save({ headerTagline: 'Không được lưu' }));
+    } finally {
+      AuditOutbox.create = original;
+    }
+    assert.deepEqual([res.status, res.data.code], [503, 'audit_unavailable']);
+    assert.equal((await admin.client.get('/api/admin/site-settings')).data.headerTagline, before_.headerTagline);
+  });
+
+  test('ghi nhật ký cuối thất bại: thao tác vẫn xong, dấu vết còn lại và được chuyển thành nhật ký khi khôi phục', async () => {
+    await AuditOutbox.deleteMany({});
+    const original = AuditLog.create;
+    AuditLog.create = async () => {
+      throw new Error('mất kết nối tạm thời');
+    };
+    let res;
+    try {
+      res = await quietly(() => save({ headerTagline: `Khẩu hiệu ${uniqueSuffix()}` }));
+    } finally {
+      AuditLog.create = original;
+    }
+    assert.equal(res.status, 200);
+    const pending = await AuditOutbox.find({}).lean();
+    assert.equal(pending.length, 1);
+    assert.deepEqual([pending[0].action, pending[0].result], ['site_settings.update', 'success']);
+    const beforeCount = await AuditLog.countDocuments({ action: 'site_settings.update' });
+    assert.equal(await flushAuditOutbox({ olderThanMs: 0 }), 1);
+    assert.equal(await AuditLog.countDocuments({ action: 'site_settings.update' }), beforeCount + 1);
+    assert.equal(await AuditOutbox.countDocuments(), 0);
+  });
+
+  test('server dừng giữa thao tác (dấu vết không có kết quả) → nhật ký ghi rõ kết quả không xác định', async () => {
+    await AuditOutbox.deleteMany({});
+    await AuditOutbox.create({ action: 'user.status_change', actorType: 'admin', actorLabel: 'ad***@example.edu.vn', createdAt: new Date(Date.now() - 120_000) });
+    assert.equal(await flushAuditOutbox(), 1);
+    const entry = await AuditLog.findOne({ action: 'user.status_change' }).sort({ createdAt: -1 }).lean();
+    assert.deepEqual([entry.result, entry.reason], ['failure', 'outcome_unknown']);
+  });
+
+  test('thao tác thành công bình thường: đúng một dòng nhật ký, không còn dấu vết chờ', async () => {
+    await AuditOutbox.deleteMany({});
+    const beforeCount = await AuditLog.countDocuments({ action: 'site_settings.update' });
+    assert.equal((await save({ headerTagline: `Khẩu hiệu ${uniqueSuffix()}` })).status, 200);
+    assert.equal(await AuditLog.countDocuments({ action: 'site_settings.update' }), beforeCount + 1);
+    assert.equal(await AuditOutbox.countDocuments(), 0);
   });
 });
 

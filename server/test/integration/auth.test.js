@@ -47,6 +47,8 @@ describe('bảo vệ API bằng phiên đăng nhập', () => {
       ['GET', '/api/checkin/history'],
       ['GET', '/api/gacha/rewards'],
       ['POST', '/api/gacha/spin'],
+      ['POST', '/api/gacha/draw'],
+      ['GET', '/api/gacha/results'],
       ['POST', '/api/checkin'],
       ['POST', '/api/auth/password/change'],
     ]) {
@@ -72,7 +74,7 @@ describe('bảo vệ API bằng phiên đăng nhập', () => {
     assert.equal(history.status, 403);
     const rewards = await b.get(`/api/gacha/rewards/${encodeURIComponent(aBody.studentId)}`);
     assert.equal(rewards.status, 403);
-    const spin = await b.post('/api/gacha/spin', { json: { studentId: aBody.studentId } });
+    const spin = await b.post('/api/gacha/draw', { json: { studentId: aBody.studentId } });
     assert.equal(spin.status, 403);
   });
 

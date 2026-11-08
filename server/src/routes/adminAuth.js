@@ -10,6 +10,7 @@ import { isPlausibleEmail, normalizeEmail } from '../services/accounts.js';
 import { verifyPassword, verifyPasswordOrDummy } from '../services/password.js';
 import { clientIpKey, createRateLimiter, reserveAll, tooManyRequests } from '../services/rateLimit.js';
 import { maskEmail } from '../services/privacy.js';
+import { hashToken } from '../services/session.js';
 import { limitAdminApi, requireAdmin, requireAdminCsrf, sendAdminError } from '../middleware/admin.js';
 
 const router = Router();
@@ -80,9 +81,11 @@ router.post('/login', async (req, res) => {
     }
 
     const ip = clientIpKey(req);
-    const pairKey = `${email}|${ip}`;
+    // Khóa bộ đếm là bản băm: ratelimits không giữ email (hay cặp email|IP) người khác gõ vào (SEC-03)
+    const emailKey = hashToken(email);
+    const pairKey = hashToken(`${email}|${ip}`);
     // Giữ chỗ TRƯỚC khi băm: nhiều yêu cầu đồng thời không cùng lọt qua bước kiểm tra, và yêu cầu đã vượt ngưỡng không tốn CPU scrypt
-    if (!(await reserveAll([[loginByIp, ip], [loginByEmail, email], [loginByPair, pairKey]]))) {
+    if (!(await reserveAll([[loginByIp, ip], [loginByEmail, emailKey], [loginByPair, pairKey]]))) {
       return tooManyRequests(res, MFA_LOCKED);
     }
 
@@ -99,7 +102,7 @@ router.post('/login', async (req, res) => {
       return res.status(401).json(INVALID_CREDENTIALS);
     }
 
-    await Promise.all([loginByPair.reset(pairKey), loginByEmail.release(email), loginByIp.release(ip)]);
+    await Promise.all([loginByPair.reset(pairKey), loginByEmail.release(emailKey), loginByIp.release(ip)]);
     const csrfToken = await beginAdminLogin(req, res, user);
     res.json({ stage: 'mfa', mfaEnrolled: await isMfaEnrolled(user._id), passkeyAvailable: Boolean(await hasPasskey(user._id)), csrfToken });
   } catch (err) {

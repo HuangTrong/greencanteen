@@ -10,6 +10,8 @@ import StoriesPage from './pages/StoriesPage';
 import StoryEditorPage from './pages/StoryEditorPage';
 import GachaPage from './pages/GachaPage';
 import GachaConfigPage from './pages/GachaConfigPage';
+import GachaMediaPage from './pages/GachaMediaPage';
+import GachaRewardsPage from './pages/GachaRewardsPage';
 import SettingsPage from './pages/SettingsPage';
 import AuditPage from './pages/AuditPage';
 
@@ -17,7 +19,7 @@ const NAV = [
   ['/', 'Tổng quan'],
   ['/users', 'Tài khoản'],
   ['/stories', 'Câu chuyện'],
-  ['/gacha', 'Gacha'],
+  ['/gacha', 'Quay thưởng tri ân'],
   ['/settings', 'Thiết lập website'],
   ['/audit', 'Nhật ký kiểm toán'],
 ];
@@ -117,6 +119,8 @@ export default function AdminApp() {
               <Route path="stories/new" element={<StoryEditorPage />} />
               <Route path="stories/:id" element={<StoryEditorPage />} />
               <Route path="gacha" element={<GachaPage />} />
+              <Route path="gacha/media" element={<GachaMediaPage />} />
+              <Route path="gacha/rewards" element={<GachaRewardsPage />} />
               <Route path="gacha/:id" element={<GachaConfigPage />} />
               <Route path="settings" element={<SettingsPage />} />
               <Route path="audit" element={<AuditPage />} />

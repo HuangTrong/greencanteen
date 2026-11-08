@@ -14,12 +14,10 @@ const MANAGED_ENV = [
   'VISION_SIMULATED_CONFIDENCE',
   'VISION_CONFIDENCE_THRESHOLD',
   'VISION_ENGINE',
-  'VISION_CLIP_MODEL',
+  'VISION_CLASSIFIER_MODEL',
+  'VISION_CLASSIFIER_THREADS',
   'VISION_MODEL_DIR',
   'VISION_MAX_QUEUE',
-  'VISION_OLLAMA_URL',
-  'VISION_OLLAMA_MODEL',
-  'VISION_OLLAMA_TRUSTED_HOST',
   'CHECKIN_COOLDOWN_MINUTES',
   'CHECKIN_MAX_IMAGE_MB',
   'EMAIL_TRANSPORT',
@@ -37,6 +35,8 @@ const MANAGED_ENV = [
   'COOKIE_SAMESITE',
   'QR_LOGIN_ENABLED',
   'VISION_TIMEOUT_MS',
+  'VISION_SELF_CHECK',
+  'VISION_MODEL_URL',
   'SMTP_PORT',
   'SMTP_SECURE',
   'SMTP_USER',
@@ -56,7 +56,6 @@ const MANAGED_ENV = [
   'AUTH_REGISTER_IP_WINDOW_MINUTES',
   'AUTH_VERIFY_EMAIL_MAX',
   'AUTH_VERIFY_EMAIL_WINDOW_MINUTES',
-  'VISION_ALLOW_CLIP_ONLY',
   'STATS_CACHE_SECONDS',
   'API_RATE_LIMIT_PER_MINUTE',
   'CAPTCHA_MODE',
@@ -69,6 +68,10 @@ const MANAGED_ENV = [
   'CLAMAV_HOST',
   'CLAMAV_PORT',
   'CLAMAV_TIMEOUT_MS',
+  'HOST',
+  'CHECKIN_DAILY_MAX',
+  'ANALYTICS_EVENTS_PER_VISIT',
+  'ANALYTICS_VISITS_PER_IP',
 ];
 
 /**
@@ -79,7 +82,12 @@ const MANAGED_ENV = [
  */
 export function setEnv(vars = {}) {
   for (const key of MANAGED_ENV) delete process.env[key];
-  Object.assign(process.env, { AUTH_REGISTER_IP_MAX: '1000000', STATS_CACHE_SECONDS: '0', API_RATE_LIMIT_PER_MINUTE: '0', CAPTCHA_MODE: 'off' }, vars);
+  // Thời gian chờ và trần lượt thưởng mỗi ngày (SEC-02) tắt vì nhiều test check-in liên tiếp bằng một tài khoản; test về chính hai giới hạn này tự đặt
+  Object.assign(
+    process.env,
+    { AUTH_REGISTER_IP_MAX: '1000000', STATS_CACHE_SECONDS: '0', API_RATE_LIMIT_PER_MINUTE: '0', CAPTCHA_MODE: 'off', CHECKIN_COOLDOWN_MINUTES: '0', CHECKIN_DAILY_MAX: '0' },
+    vars
+  );
 }
 
 export async function startTestServer() {

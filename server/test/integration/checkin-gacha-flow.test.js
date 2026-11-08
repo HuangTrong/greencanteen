@@ -1,9 +1,9 @@
 // Luồng check-in → phân loại tại server → ghi điểm/lịch sử → Gacha: kiểm thử chuyển trạng thái, giá trị biên huy hiệu,
-// lỗi giữa chừng (tính nhất quán), yêu cầu trùng lặp và đồng thời. Bộ nhận diện là Ollama giả trên 127.0.0.1 (HTTP thật).
+// lỗi giữa chừng (tính nhất quán), yêu cầu trùng lặp và đồng thời. Bộ nhận diện chạy ở chế độ mô phỏng (kết quả cố định
+// theo biến môi trường, cùng hàm quyết định thưởng); lỗi riêng của bộ phân loại ONNX nằm ở vision-classifier.test.js.
 import { after, before, beforeEach, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import net from 'node:net';
 import sharp from 'sharp';
 import { User } from '../../src/models/User.js';
 import { CheckIn } from '../../src/models/CheckIn.js';
@@ -14,15 +14,20 @@ import { Story } from '../../src/models/Story.js';
 import { uploadDir } from '../../src/routes/checkin.js';
 import { sha256 } from '../../src/services/image.js';
 import { recoverOutboxes } from '../../src/services/rewards.js';
+import { deleteAccount } from '../../src/services/accountDeletion.js';
 import { syncStories } from '../../src/services/stories.js';
 import { createClient, imageForm, registerUser, setEnv, startTestServer, uniquePng } from '../helpers.js';
-import { startFakeOllama } from '../fakes/ollama.js';
+import { publishKeychainConfig } from '../gachaHelpers.js';
 
 let ctx;
-let ollama;
 const client = () => createClient(ctx.base);
 const SIMULATION = { VISION_SIMULATION: 'true' };
-const LOCAL_VLM = () => ({ VISION_ENGINE: 'ollama', VISION_OLLAMA_URL: ollama.url });
+/** Bộ nhận diện trả kết quả cố định (chế độ mô phỏng, chỉ có khi NODE_ENV khác production) */
+const simulatedVision = (category = 'reusable_bottle', confidence = 0.95) => ({
+  ...SIMULATION,
+  VISION_SIMULATED_CATEGORY: category,
+  VISION_SIMULATED_CONFIDENCE: String(confidence),
+});
 
 async function loggedInUser() {
   const c = client();
@@ -31,11 +36,6 @@ async function loggedInUser() {
   return { c, id: res.data.user.id, studentId: res.body.studentId };
 }
 const checkIn = (c, buffer = uniquePng(), opts) => c.post('/api/checkin', { form: imageForm(buffer, opts) });
-
-/** VLM local giả: trả phân loại cố định; `gate` giữ phản hồi tới khi đủ số request đang chờ; `delayMs` làm chậm */
-function fakeVision({ category = 'reusable_bottle', confidence = 0.95, gate = 0, delayMs = 0 } = {}) {
-  Object.assign(ollama, { reply: { category, confidence, reason: 'Ảnh giả lập cho kiểm thử' }, gate, delayMs });
-}
 
 async function withStub(target, method, impl, fn) {
   const original = target[method];
@@ -53,16 +53,13 @@ async function withStub(target, method, impl, fn) {
 before(async () => {
   setEnv(SIMULATION);
   ctx = await startTestServer();
-  ollama = await startFakeOllama();
   await syncStories();
 });
 after(async () => {
-  await ollama.close();
   await ctx.stop();
 });
 beforeEach(async () => {
   setEnv(SIMULATION);
-  fakeVision();
   await RateLimit.deleteMany({});
 });
 
@@ -79,8 +76,7 @@ describe('phân loại ảnh — bảng quyết định loại × độ tin cậ
   for (const [category, confidence, status, label] of table) {
     test(`${category} @ ${confidence} → ${status} (${label})`, async () => {
       const { c, id } = await loggedInUser();
-      setEnv(LOCAL_VLM());
-      fakeVision({ category, confidence });
+      setEnv(simulatedVision(category, confidence));
       const res = await checkIn(c);
       assert.equal(res.status, status);
       assert.equal(res.data.classification.category, category);
@@ -102,45 +98,9 @@ describe('phân loại ảnh — bảng quyết định loại × độ tin cậ
     });
   }
 
-  test('VLM local quá thời gian / chưa pull mô hình / không chạy → 502, không ghi nhận gì', async () => {
+  test('bộ phân loại chưa có mô hình → 503, không ghi nhận, không thưởng', async () => {
     const { c, id } = await loggedInUser();
-    const originalError = console.error;
-    console.error = () => {};
-    try {
-      setEnv({ ...LOCAL_VLM(), VISION_TIMEOUT_MS: '3000' });
-      fakeVision({ delayMs: 3300 });
-      const timeout = await checkIn(c);
-      assert.equal(timeout.status, 502);
-      assert.equal(timeout.data.code, 'vision_timeout');
-
-      ollama.reply = { status: 404, error: 'model "qwen3-vl:4b-instruct" not found, try pulling it first' };
-      ollama.delayMs = 0;
-      const notPulled = await checkIn(c);
-      assert.equal(notPulled.status, 502);
-      assert.equal(notPulled.data.code, 'vision_provider_error');
-
-      // Cổng vừa đóng → kết nối bị từ chối như khi Ollama chưa chạy (không dùng cổng 9: fetch chặn sẵn là "bad port")
-      const closedPort = await new Promise((resolve) => {
-        const probe = net.createServer().listen(0, '127.0.0.1', () => {
-          const { port } = probe.address();
-          probe.close(() => resolve(port));
-        });
-      });
-      setEnv({ VISION_ENGINE: 'ollama', VISION_OLLAMA_URL: `http://127.0.0.1:${closedPort}` });
-      const down = await checkIn(c);
-      assert.equal(down.status, 502);
-      assert.equal(down.data.code, 'vision_provider_error');
-    } finally {
-      console.error = originalError;
-    }
-    assert.equal(await CheckIn.countDocuments({ userId: id }), 0);
-    assert.equal((await User.findById(id).lean()).ecoPoints, 0);
-  });
-
-  test('kết hợp CLIP + VLM khi CLIP chưa có mô hình → 503, không tự hạ xuống chỉ dùng VLM; không thưởng', async () => {
-    const { c, id } = await loggedInUser();
-    // Thư mục mô hình trống → CLIP "chưa sẵn sàng"; VLM giả vẫn trả "bình cá nhân 95%" nhưng không được dùng một mình
-    setEnv({ ...LOCAL_VLM(), VISION_ENGINE: 'ensemble', VISION_MODEL_DIR: 'test/.khong-co-mo-hinh' });
+    setEnv({ VISION_ENGINE: 'classifier', VISION_MODEL_DIR: 'test/.khong-co-mo-hinh' });
     const originalError = console.error;
     console.error = () => {};
     try {
@@ -150,6 +110,7 @@ describe('phân loại ảnh — bảng quyết định loại × độ tin cậ
     } finally {
       console.error = originalError;
     }
+    assert.equal(await CheckIn.countDocuments({ userId: id }), 0);
     assert.equal((await User.findById(id).lean()).ecoPoints, 0);
   });
 });
@@ -180,11 +141,22 @@ describe('trùng lặp và đồng thời', () => {
   test('cùng một ảnh gửi đồng thời từ hai tài khoản chỉ được thưởng một lần', async () => {
     const a = await loggedInUser();
     const b = await loggedInUser();
-    setEnv(LOCAL_VLM());
-    // Giữ phản hồi nhận diện tới khi cả hai request đã qua bước kiểm tra trùng ban đầu → tái hiện race ổn định
-    fakeVision({ gate: 2 });
+    setEnv(simulatedVision());
+    // Giữ cả hai request ở bước chọn câu chuyện (sau kiểm tra trùng ban đầu và nhận diện, trước lệnh cộng thưởng nguyên tử)
+    // tới khi cả hai cùng tới → tái hiện race ổn định. Chờ tối đa 5 giây để lỗi hiện thành assert, không treo test.
+    const pickStory = Story.aggregate;
+    let arrived = 0;
+    let release;
+    const bothArrived = new Promise((resolve) => (release = resolve));
+    const gated = async function gatedAggregate(...args) {
+      arrived += 1;
+      if (arrived >= 2) release();
+      await Promise.race([bothArrived, new Promise((resolve) => setTimeout(resolve, 5000))]);
+      return pickStory.apply(this, args);
+    };
     const image = uniquePng();
-    const results = await Promise.all([checkIn(a.c, image), checkIn(b.c, image)]);
+    const results = await withStub(Story, 'aggregate', gated, () => Promise.all([checkIn(a.c, image), checkIn(b.c, image)]));
+    assert.equal(arrived, 2, 'cả hai request đều qua kiểm tra trùng ban đầu trước khi một bên được cộng thưởng');
     assert.deepEqual(results.map((r) => r.status).sort(), [200, 409]);
     assert.equal(results.find((r) => r.status === 409).data.code, 'duplicate_image');
     const totals = await User.find({ _id: { $in: [a.id, b.id] } }).lean();
@@ -214,14 +186,55 @@ describe('trùng lặp và đồng thời', () => {
     assert.equal(totals.reduce((sum, u) => sum + u.ecoPoints, 0), 10);
   });
 
-  test('F-55 (ghi nhận, còn mở): mã hóa lại JPEG ở chất lượng khác cho điểm ảnh khác nên vẫn được coi là ảnh mới', async () => {
-    const { c, id } = await loggedInUser();
-    const noisy = sharp({ create: { width: 64, height: 48, channels: 3, background: { r: 120, g: 60, b: 30 }, noise: { type: 'gaussian', mean: 128, sigma: 40 } } });
-    const original = await noisy.jpeg({ quality: 92 }).toBuffer();
-    const reEncoded = await sharp(original).jpeg({ quality: 60 }).toBuffer();
-    assert.equal((await checkIn(c, original, { type: 'image/jpeg', name: 'a.jpg' })).status, 200);
-    assert.equal((await checkIn(c, reEncoded, { type: 'image/jpeg', name: 'b.jpg' })).status, 200);
-    assert.equal((await User.findById(id).lean()).ecoPoints, 20);
+  // SEC-02 (trước đây F-55 "còn mở"): mã hóa lại, thu nhỏ hay đổi định dạng một ảnh đã thưởng cho điểm ảnh khác nhưng vẫn là cùng ảnh
+  test('SEC-02: ảnh đã thưởng mã hóa lại JPEG, thu nhỏ, đổi sang WebP bị chặn 409 ở cùng tài khoản và tài khoản khác; ảnh khác vẫn được', async () => {
+    await Promise.all([RewardedImage.deleteMany({}), CheckIn.deleteMany({})]);
+    const a = await loggedInUser();
+    const b = await loggedInUser();
+    const original = fs.readFileSync(new URL('../fixtures/vision/bottle-drawing.jpg', import.meta.url));
+    assert.equal((await checkIn(a.c, original, { type: 'image/jpeg', name: 'goc.jpg' })).status, 200);
+    const variants = {
+      'JPEG chất lượng 60': await sharp(original).jpeg({ quality: 60 }).toBuffer(),
+      'thu nhỏ một nửa': await sharp(original).resize(224).jpeg({ quality: 85 }).toBuffer(),
+      WebP: await sharp(original).webp({ quality: 80 }).toBuffer(),
+    };
+    for (const [label, variant] of Object.entries(variants)) {
+      for (const account of [a, b]) {
+        const res = await checkIn(account.c, variant, { type: 'image/jpeg', name: 'lai.jpg' });
+        assert.deepEqual([res.status, res.data.code], [409, 'duplicate_image'], label);
+      }
+    }
+    const other = fs.readFileSync(new URL('../fixtures/vision/plastic-cup-drawing.jpg', import.meta.url));
+    assert.equal((await checkIn(b.c, other, { type: 'image/jpeg', name: 'khac.jpg' })).status, 200, 'ảnh khác hẳn không bị coi là trùng');
+    const totals = await User.find({ _id: { $in: [a.id, b.id] } }).lean();
+    assert.equal(totals.reduce((sum, u) => sum + u.ecoPoints, 0), 20);
+  });
+
+  test('SEC-02: ảnh gần trùng của tài khoản khác chỉ bị chặn trong 7 ngày; của chính mình thì luôn bị chặn', async () => {
+    await Promise.all([RewardedImage.deleteMany({}), CheckIn.deleteMany({})]);
+    const a = await loggedInUser();
+    const b = await loggedInUser();
+    const original = fs.readFileSync(new URL('../fixtures/vision/bottle-drawing.jpg', import.meta.url));
+    const reEncoded = await sharp(original).jpeg({ quality: 70 }).toBuffer();
+    assert.equal((await checkIn(a.c, original, { type: 'image/jpeg', name: 'goc.jpg' })).status, 200);
+    // Ghi thẳng qua driver: Mongoose coi createdAt là bất biến và bỏ qua lệnh sửa
+    await RewardedImage.collection.updateMany({}, { $set: { createdAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000) } });
+    assert.equal((await checkIn(a.c, reEncoded, { type: 'image/jpeg', name: 'lai.jpg' })).data.code, 'duplicate_image');
+    assert.equal((await checkIn(b.c, reEncoded, { type: 'image/jpeg', name: 'lai.jpg' })).status, 200);
+  });
+
+  test('SEC-06: xóa tài khoản không giải phóng ảnh đã thưởng; bản ghi giữ lại không còn gắn với tài khoản', async () => {
+    await Promise.all([RewardedImage.deleteMany({}), CheckIn.deleteMany({})]); // các test trước cũng để lại ảnh đã thưởng
+    const a = await loggedInUser();
+    const b = await loggedInUser();
+    const image = uniquePng();
+    assert.equal((await checkIn(a.c, image)).status, 200);
+    await deleteAccount(await User.findById(a.id));
+    const res = await checkIn(b.c, image);
+    assert.deepEqual([res.status, res.data.code], [409, 'duplicate_image']);
+    const kept = await RewardedImage.find({}).lean();
+    assert.equal(kept.length, 1);
+    assert.equal(kept[0].userId, undefined, 'không còn gắn với tài khoản đã xóa');
   });
 
   test('F-55: bản ghi cũ lưu băm theo byte vẫn chặn được ảnh đã thưởng trước khi đổi cách nhận dạng', async () => {
@@ -250,6 +263,42 @@ describe('trùng lặp và đồng thời', () => {
     assert.ok(Number(cooled.headers.get('retry-after')) > 0, 'có Retry-After');
     await User.updateOne({ _id: id }, { $set: { lastRewardedCheckInAt: new Date(Date.now() - 31 * 60_000) } });
     assert.equal((await checkIn(c, image)).status, 200);
+  });
+
+  test('SEC-02: mặc định thời gian chờ 30 phút và tối đa 3 lượt được thưởng mỗi ngày khi không đặt biến môi trường', async () => {
+    setEnv(SIMULATION);
+    delete process.env.CHECKIN_COOLDOWN_MINUTES;
+    delete process.env.CHECKIN_DAILY_MAX;
+    const status = (await client().get('/api/checkin/status')).data;
+    assert.deepEqual([status.cooldownMinutes, status.dailyMax], [30, 3]);
+  });
+
+  test('SEC-02: quá số lượt được thưởng trong ngày (giờ Việt Nam) → 429 checkin_daily_limit, không cộng thưởng; gửi đồng thời không vượt trần', async () => {
+    setEnv({ ...SIMULATION, CHECKIN_DAILY_MAX: '2' });
+    const { c, id } = await loggedInUser();
+    assert.equal((await checkIn(c)).status, 200);
+    assert.equal((await checkIn(c)).status, 200);
+    const third = await checkIn(c);
+    assert.deepEqual([third.status, third.data.code], [429, 'checkin_daily_limit']);
+    assert.ok(Number(third.headers.get('retry-after')) > 0, 'có Retry-After tới nửa đêm');
+    assert.deepEqual([(await User.findById(id).lean()).ecoPoints, await CheckIn.countDocuments({ userId: id, valid: true })], [20, 2]);
+
+    const other = await loggedInUser();
+    const burst = await Promise.all([1, 2, 3, 4, 5].map(() => checkIn(other.c)));
+    assert.equal(burst.filter((r) => r.status === 200).length, 2, String(burst.map((r) => r.status)));
+    assert.ok(burst.filter((r) => r.status !== 200).every((r) => r.data.code === 'checkin_daily_limit'));
+    const user = await User.findById(other.id).lean();
+    assert.deepEqual([user.ecoPoints, user.pendingGachaSpins], [20, 2]);
+  });
+
+  test('SEC-02: lượt không được thưởng (ảnh bị từ chối) không tốn trần trong ngày', async () => {
+    setEnv({ ...SIMULATION, CHECKIN_DAILY_MAX: '1' });
+    const { c } = await loggedInUser();
+    const image = uniquePng();
+    setEnv({ ...simulatedVision('single_use_plastic_cup', 0.99), CHECKIN_DAILY_MAX: '1' });
+    assert.equal((await checkIn(c, image)).status, 422);
+    setEnv({ ...SIMULATION, CHECKIN_DAILY_MAX: '1' });
+    assert.equal((await checkIn(c, image)).status, 200, 'lượt không được thưởng trước đó không tính vào trần');
   });
 
   test('tối đa 20 lần gửi ảnh mỗi giờ cho mỗi tài khoản (lần 21 → 429)', async () => {
@@ -299,24 +348,27 @@ describe('lỗi giữa chừng — tính nhất quán', () => {
     assert.equal((await c.get('/api/checkin/history')).data.history.length, 1);
   });
 
-  test('ghi phần thưởng Gacha thất bại → mã nạp vẫn hiện trong danh sách và được khôi phục', async () => {
+  test('ghi kết quả quay thưởng thất bại → móc khóa và mã nhận quà vẫn hiện trong danh sách và được khôi phục', async () => {
+    await publishKeychainConfig();
     const { c, id } = await loggedInUser();
     assert.equal((await checkIn(c)).status, 200);
-    const spin = await withStub(GachaReward.prototype, 'save', () => Promise.reject(new Error('ghi lỗi')), () => c.post('/api/gacha/spin'));
+    const spin = await withStub(GachaReward.prototype, 'save', () => Promise.reject(new Error('ghi lỗi')), () => c.post('/api/gacha/draw'));
     assert.equal(spin.status, 200);
-    const list = await c.get('/api/gacha/rewards');
+    assert.equal(spin.data.outcome, 'win');
+    const list = await c.get('/api/gacha/results');
     assert.equal(list.data.rewards.length, 1);
-    assert.equal(list.data.rewards[0].topUpCode, spin.data.prize.topUpCode);
+    assert.equal(list.data.rewards[0].claimCode, spin.data.prize.claimCode);
     assert.equal(list.data.pendingGachaSpins, 0);
     await recoverOutboxes();
     assert.equal(await GachaReward.countDocuments({ userId: id }), 1);
   });
 });
 
-describe('check-in → Gacha → hồ sơ (chuyển trạng thái)', () => {
-  test('0 lượt → check-in (1 lượt) → quay (0 lượt, có mã nạp) → quay tiếp bị từ chối', async () => {
+describe('check-in → quay thưởng tri ân → hồ sơ (chuyển trạng thái)', () => {
+  test('0 lượt → check-in (1 lượt) → quay (0 lượt, trúng móc khóa) → quay tiếp bị từ chối', async () => {
+    await publishKeychainConfig();
     const { c } = await loggedInUser();
-    const noSpin = await c.post('/api/gacha/spin');
+    const noSpin = await c.post('/api/gacha/draw');
     assert.equal(noSpin.status, 400);
     assert.equal(noSpin.data.code, 'no_spins');
 
@@ -324,17 +376,18 @@ describe('check-in → Gacha → hồ sơ (chuyển trạng thái)', () => {
     assert.equal(ok.data.user.pendingGachaSpins, 1);
     assert.ok(ok.data.story?.source?.url, 'kèm câu chuyện có nguồn');
 
-    const spin = await c.post('/api/gacha/spin');
+    const spin = await c.post('/api/gacha/draw');
     assert.equal(spin.status, 200);
     assert.equal(spin.data.pendingGachaSpins, 0);
-    assert.match(spin.data.prize.topUpCode, /^GC-\d+K-[0-9A-F]{8}$/);
+    assert.equal(spin.data.outcome, 'win');
+    assert.match(spin.data.prize.claimCode, /^TA-[2-9A-HJKMNP-Z]{5}-[2-9A-HJKMNP-Z]{5}$/);
 
     const me = (await c.get('/api/auth/me')).data.user;
     assert.equal(me.pendingGachaSpins, 0);
     assert.equal(me.ecoPoints, 10);
-    const rewards = (await c.get('/api/gacha/rewards')).data.rewards;
-    assert.deepEqual(rewards.map((r) => r.topUpCode), [spin.data.prize.topUpCode]);
-    assert.equal((await c.post('/api/gacha/spin')).status, 400);
+    const rewards = (await c.get('/api/gacha/results')).data.rewards;
+    assert.deepEqual(rewards.map((r) => r.claimCode), [spin.data.prize.claimCode]);
+    assert.equal((await c.post('/api/gacha/draw')).status, 400);
   });
 
   test('không còn câu chuyện nào có nguồn → check-in vẫn thành công, story = null', async () => {

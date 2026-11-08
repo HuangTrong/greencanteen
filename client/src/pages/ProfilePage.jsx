@@ -147,7 +147,7 @@ export default function ProfilePage() {
         <p className="text-4xl">👤</p>
         <p className="mt-2 font-bold text-stone-700">Chưa có hồ sơ cá nhân</p>
         <p className="mt-1 text-sm text-stone-500">
-          Đăng nhập hoặc tạo tài khoản để check-in, tích Eco-points và nhận lượt quay Gacha.
+          Đăng nhập hoặc tạo tài khoản để check-in, tích Eco-points và nhận lượt quay thưởng tri ân.
         </p>
         {qrChallenge && (
           <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">

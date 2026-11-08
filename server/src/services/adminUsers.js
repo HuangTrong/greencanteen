@@ -65,10 +65,12 @@ async function loadUser(id) {
 
 export async function getUserDetail(id) {
   const user = await loadUser(id);
-  const [validCheckIns, invalidCheckIns, rewards, sessions, mfaEnrolled, userMfaEnabled, passkey] = await Promise.all([
+  const [validCheckIns, invalidCheckIns, spins, rewards, sessions, mfaEnrolled, userMfaEnabled, passkey] = await Promise.all([
     CheckIn.countDocuments({ userId: user._id, valid: true }),
     CheckIn.countDocuments({ userId: user._id, valid: false }),
+    // Lượt quay thưởng tri ân đã có kết quả và số lượt trúng (móc khóa, mã nạp demo cũ)
     GachaReward.countDocuments({ userId: user._id }),
+    GachaReward.countDocuments({ userId: user._id, outcome: { $ne: 'lose' } }),
     Session.countDocuments({ userId: user._id, expiresAt: { $gt: new Date() } }),
     user.role === 'admin' ? isMfaEnrolled(user._id) : false,
     isUserMfaEnabled(user._id),
@@ -83,7 +85,7 @@ export async function getUserDetail(id) {
     pendingGachaSpins: user.pendingGachaSpins || 0,
     plasticSavedGrams: user.plasticSavedGrams || 0,
     updatedAt: user.updatedAt,
-    counts: { validCheckIns, invalidCheckIns, rewards, sessions },
+    counts: { validCheckIns, invalidCheckIns, spins, rewards, sessions },
     mfaEnrolled,
     userMfaEnabled,
     hasPasskey: Boolean(passkey),

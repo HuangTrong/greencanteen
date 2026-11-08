@@ -63,12 +63,12 @@ const DEFINITIONS = [
   { key: 'accountsNew', label: 'Tài khoản mới', unit: 'tài khoản', source: 'Collection users, trường createdAt', definition: 'Số tài khoản được tạo trong kỳ.' },
   { key: 'checkInsValid', label: 'Check-in hợp lệ', unit: 'lượt', source: 'Collection checkins, valid = true', definition: 'Lượt ảnh được server xác nhận là bình/ly cá nhân đạt ngưỡng tin cậy và đã cộng thưởng.' },
   { key: 'checkInsInvalid', label: 'Check-in không hợp lệ', unit: 'lượt', source: 'Collection checkins, valid = false', definition: 'Lượt ảnh đã phân loại nhưng không được thưởng. Lỗi bộ nhận diện không được ghi nhận nên không nằm trong số này.' },
-  { key: 'gachaSpins', label: 'Lượt Gacha', unit: 'lượt', source: 'Collection gacharewards', definition: 'Số lượt quay đã phát giải. Mỗi lượt tạo đúng một phần thưởng nên đây cũng là số phần thưởng.' },
-  { key: 'rewardFaceValueVnd', label: 'Tổng mệnh giá phần thưởng', unit: 'VND (số nguyên)', source: 'Collection gacharewards, trường amountVnd', definition: 'Tổng mệnh giá danh nghĩa của mã đã phát. Không phải doanh thu hay chi phí: mã hiện là mã demo, chưa được xác minh đổi được tại nhà mạng.' },
-  { key: 'pageViews', label: 'Lượt xem trang', unit: 'lượt', source: 'Sự kiện page_view', definition: 'Mỗi lần mở một trang công khai trong ứng dụng.' },
-  { key: 'visits', label: 'Lượt truy cập', unit: 'lượt', source: 'Sự kiện page_view, visitId khác nhau', definition: 'Một chuỗi xem trang trong một tab, kết thúc sau 30 phút không hoạt động.' },
+  { key: 'gachaSpins', label: 'Lượt quay thưởng tri ân', unit: 'lượt', source: 'Collection gacharewards', definition: 'Số lượt quay đã có kết quả, gồm cả lượt không trúng và mã nạp demo đã phát trước khi đổi sang móc khóa.' },
+  { key: 'gachaWins', label: 'Lượt trúng móc khóa', unit: 'lượt', source: 'Collection gacharewards, prizeType = keychain', definition: 'Số lượt quay trúng móc khóa, mỗi lượt một móc khóa và một mã nhận quà. Không gồm mã nạp demo trước đây.' },
+  { key: 'pageViews', label: 'Lượt xem trang', unit: 'lượt', source: 'Sự kiện page_view', definition: 'Mỗi lần mở một trang công khai trong ứng dụng. Trình duyệt tự gửi, không cần đăng nhập nên có thể bị thổi phồng (server chỉ giới hạn theo lượt truy cập và theo IP): chỉ mang tính tham khảo.' },
+  { key: 'visits', label: 'Lượt truy cập', unit: 'lượt', source: 'Sự kiện page_view, visitId khác nhau', definition: 'Một chuỗi xem trang trong một tab, kết thúc sau 30 phút không hoạt động. Trình duyệt tự gửi, không cần đăng nhập nên có thể bị thổi phồng (server chỉ giới hạn theo lượt truy cập và theo IP): chỉ mang tính tham khảo.' },
   { key: 'activeUsers', label: 'Người dùng hoạt động', unit: 'tài khoản', source: 'Sự kiện page_view có mã ẩn danh theo tháng', definition: 'Số tài khoản đã đăng nhập mở ít nhất một trang trong kỳ. Không suy ra từ số check-in. Mã ẩn danh đổi theo tháng nên khoảng nhiều tháng không có tổng, chỉ có số từng kỳ.' },
-  { key: 'clickThrough', label: 'Tỉ lệ nhấp', unit: '%', source: 'Sự kiện impression và click', definition: 'Lượt nhấp chia lượt hiển thị của cùng một mục.' },
+  { key: 'clickThrough', label: 'Tỉ lệ nhấp', unit: '%', source: 'Sự kiện impression và click', definition: 'Lượt nhấp chia lượt hiển thị của cùng một mục. Trình duyệt tự gửi, không cần đăng nhập nên có thể bị thổi phồng (server chỉ giới hạn theo lượt truy cập và theo IP): chỉ mang tính tham khảo.' },
 ];
 
 const FINANCIAL = {
@@ -76,7 +76,7 @@ const FINANCIAL = {
   revenueVnd: null,
   costVnd: null,
   profitVnd: null,
-  note: 'Hệ thống chưa có tích hợp thanh toán hay dữ liệu giao dịch. Mệnh giá giải Gacha không được tính là doanh thu.',
+  note: 'Hệ thống chưa có tích hợp thanh toán hay dữ liệu giao dịch. Móc khóa và mã nạp demo trước đây không được tính là doanh thu hay chi phí.',
 };
 
 async function groupByPeriod(Model, granularity, range, accumulators, extraMatch = {}) {
@@ -101,9 +101,10 @@ export async function buildOverview(query) {
       { valid: true }
     ),
     groupByPeriod(CheckIn, granularity, range, { count: { $sum: 1 } }, { valid: false }),
-    groupByPeriod(GachaReward, granularity, range, { count: { $sum: 1 }, faceValue: { $sum: '$amountVnd' } }),
+    groupByPeriod(GachaReward, granularity, range, { count: { $sum: 1 }, wins: { $sum: { $cond: [{ $eq: ['$prizeType', 'keychain'] }, 1, 0] } } }),
+    // Mã nạp demo đã phát trước khi đổi sang móc khóa: chỉ bản ghi cũ có mệnh giá
     GachaReward.aggregate([
-      { $match: { createdAt: range } },
+      { $match: { createdAt: range, amountVnd: { $type: 'number' } } },
       { $group: { _id: '$amountVnd', count: { $sum: 1 } } },
       { $sort: { _id: 1 } },
     ]),
@@ -118,7 +119,7 @@ export async function buildOverview(query) {
     checkInsValid: valid.get(key)?.count ?? 0,
     checkInsInvalid: invalid.get(key)?.count ?? 0,
     gachaSpins: rewards.get(key)?.count ?? 0,
-    rewardFaceValueVnd: rewards.get(key)?.faceValue ?? 0,
+    gachaWins: rewards.get(key)?.wins ?? 0,
     pageViews: traffic.byPeriod.get(key)?.pageViews ?? null,
     visits: traffic.byPeriod.get(key)?.visits ?? null,
     activeUsers: traffic.byPeriod.get(key)?.activeUsers ?? null,
@@ -137,7 +138,7 @@ export async function buildOverview(query) {
       checkInsInvalid: sum('checkInsInvalid'),
       checkInsSimulated: [...valid.values()].reduce((total, row) => total + row.simulated, 0),
       gachaSpins: sum('gachaSpins'),
-      rewardFaceValueVnd: sum('rewardFaceValueVnd'),
+      gachaWins: sum('gachaWins'),
     },
     rewardsByAmount: byAmount.map(({ _id, count }) => ({ amountVnd: _id, count, faceValueVnd: _id * count })),
     series,

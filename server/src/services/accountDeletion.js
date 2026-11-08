@@ -19,7 +19,8 @@ import { AdminError } from './adminErrors.js';
 import { writeAudit } from './audit.js';
 import { maskEmail } from './privacy.js';
 
-// Mọi model có trường userId. Thêm model mới gắn với tài khoản thì phải thêm vào đây; test đối chiếu danh sách này với mongoose
+// Mọi model có trường userId nằm ở một trong hai danh sách: bị xóa cùng tài khoản, hoặc được giữ lại nhưng bỏ liên kết với tài khoản.
+// Thêm model mới gắn với tài khoản thì phải thêm vào một trong hai; test đối chiếu với mongoose
 export const USER_DATA_MODELS = [
   Session,
   AdminSession,
@@ -33,8 +34,13 @@ export const USER_DATA_MODELS = [
   UserAvatar,
   CheckIn,
   GachaReward,
-  RewardedImage,
 ];
+
+/**
+ * Giữ lại, bỏ userId (SEC-06): mã băm ảnh đã được thưởng. Xóa đi thì chính ảnh đó lại thành "ảnh mới" và được thưởng lần nữa ở tài
+ * khoản khác. Bản ghi chỉ còn băm của điểm ảnh (không dựng lại được ảnh) và thời điểm; trang /data-deletion.html ghi rõ điều này.
+ */
+export const ANONYMIZED_USER_MODELS = [RewardedImage];
 
 export async function findAccountToDelete({ email, studentId }) {
   if (Boolean(email) === Boolean(studentId)) throw new AdminError(400, 'invalid_input', 'Cần đúng một trong --email hoặc --student-id.');
@@ -59,6 +65,8 @@ export async function deleteAccount(user) {
   // Khóa trước: phiên và đăng nhập bị từ chối ngay nên không còn yêu cầu nào ghi thêm dữ liệu sau bước xóa
   await User.updateOne({ _id: user._id }, { $set: { status: 'locked' } });
   for (const model of USER_DATA_MODELS) await model.deleteMany({ userId: user._id });
+  const now = new Date();
+  for (const model of ANONYMIZED_USER_MODELS) await model.updateMany({ userId: user._id }, { $unset: { userId: 1 }, $set: { accountDeletedAt: now } });
   if (user.email) await EmailVerification.deleteOne({ email: user.email });
   await User.deleteOne({ _id: user._id });
   await writeAudit(null, {

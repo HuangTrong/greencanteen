@@ -1,0 +1,507 @@
+{
+  "_format": {
+    "note": "Manifest cho bộ phân loại ONNX chạy trực tiếp bằng onnxruntime-node (engine 'classifier'). Mỗi mục ghim revision + mã băm từng tệp; server không bao giờ tự tải mô hình lúc chạy — dùng npm run vision:download. 'input' chép đúng cấu hình huấn luyện của checkpoint (pretrained_cfg của timm, đọc từ config.json trên Hugging Face). 'classMapping' ánh xạ chỉ số lớp ImageNet-1k (thứ tự chuẩn đã sắp wnid, 1000 lớp) sang các loại nghiệp vụ của GreenCanteen (visionShared.js). 'residual' = khối lượng softmax của các lớp KHÔNG nằm trong ánh xạ → ảnh ngoài phạm vi → 'unclear', không bao giờ tự thưởng.",
+    "rewardableClasses": [
+      "reusable_bottle",
+      "reusable_cup"
+    ],
+    "aggregation": "softmax trên 1000 logits → cộng xác suất theo ánh xạ cho từng loại; xác suất của các lớp không ánh xạ thành residual; nếu residual >= điểm loại cao nhất → unclear. Độ tin cậy trả về là khối lượng softmax thô (chưa chuẩn hóa lại) — ngưỡng thưởng phải hiệu chỉnh theo tập đo, không dùng ngưỡng 0.8 của CLIP."
+  },
+  "onnxmodelzoo/mobilenetv3_small_075_Opset17": {
+    "revision": "1c237e98b27e20fa2be3e5bcaee3b4c28208e6a9",
+    "license": "Apache-2.0 (timm mobilenetv3_small_075.lamb_in1k — ImageNet-1k pretrained; xuất ONNX bởi onnx/turnkeyml, opset 17)",
+    "provenance": "timm.create_model('mobilenetv3_small_075', pretrained=True) → torch.onnx.export, build x86_ort của onnxmodelzoo; 2,04 triệu tham số",
+    "input": {
+      "shape": [
+        1,
+        3,
+        224,
+        224
+      ],
+      "layout": "NCHW",
+      "channelOrder": "RGB",
+      "dtype": "float32",
+      "resize": 256,
+      "resizeRule": "resize cạnh ngắn về 256 (crop_pct 0.875 → 224/0.875), giữ tỉ lệ",
+      "crop": 224,
+      "cropRule": "cắt giữa 224x224",
+      "interpolation": "cubic",
+      "range": "0-255 → /255",
+      "mean": [
+        0.485,
+        0.456,
+        0.406
+      ],
+      "std": [
+        0.229,
+        0.224,
+        0.225
+      ]
+    },
+    "classMapping": {
+      "reusable_bottle": [
+        898
+      ],
+      "reusable_cup": [
+        504
+      ],
+      "single_use_plastic_cup": [],
+      "other_container": [
+        412,
+        440,
+        441,
+        478,
+        647,
+        653,
+        720,
+        725,
+        737,
+        883,
+        899,
+        901,
+        907,
+        968
+      ],
+      "no_container": [],
+      "unclear": "residual"
+    },
+    "classMappingNotes": "898=water bottle, 504=coffee mug, 412=ashcan, 440=beer bottle, 441=beer glass, 478=carton, 647=measuring cup, 653=milk can, 720=pill bottle, 725=pitcher, 737=pop bottle (PET — policy hiện tại không thưởng), 883=vase, 899=water jug, 901=whiskey jug, 907=wine bottle, 968=cup. ImageNet không có lớp 'ly nhựa dùng một lần' riêng → loại này không bao giờ được dự đoán bởi artifact hiện tại (hạn chế đã ghi nhận). Biến thể W2 (thận trọng hơn): 898 → residual, chỉ còn 504 thưởng được.",
+    "files": {
+      "mobilenetv3_small_075_Opset17.onnx": {
+        "size": 8179614,
+        "sha256": "ef7b5191b3e2586c409ddcfbfef42a6434a9ac885608b8d16e9c767c518f1c31"
+      }
+    },
+    "evaluation": {
+      "status": "default-candidate",
+      "measured": {
+        "date": "2026-11-05",
+        "environment": "Node v24.19.0, Windows 11, AMD Ryzen 7 7735H 16 lõi — KHÔNG phải Railway; số đo Railway còn UNVERIFIED",
+        "modelSizeMb": 7.8,
+        "loadMs": 143,
+        "rssAfterLoadMb": 84,
+        "sequentialLatencyMs": {
+          "p50": 7,
+          "p95": 9.6,
+          "max": 12.2,
+          "runs": 80,
+          "image": "448x448 JPEG (test fixtures)"
+        },
+        "concurrent4ImagesMs": 28.3,
+        "image6000x6000Ms": 71.6,
+        "peakRssMb": 150,
+        "adversarialHoldout": {
+          "dataset": "78 ảnh vẽ tổng hợp (test/fixtures/vision/adversarial-holdout) — KHÔNG phải ảnh thật",
+          "falseAcceptRateAtThresholds": "0.0% trên toàn bộ dải ngưỡng 0.50–1.00",
+          "falseRejectRateAtThresholds": "100% (mọi ảnh vẽ tổng hợp → unclear; ImageNet-photo model không nhận ra line-drawing)",
+          "comparisonClipSameMachine": {
+            "p50Ms": 138.7,
+            "p95Ms": 148.8,
+            "peakRssMb": 564,
+            "loadMs": 1936
+          }
+        },
+        "interpretation": "Nhanh hơn CLIP ~20x, nhẹ hơn ~3.4x RAM, artifact nhỏ hơn ~18x. An toàn (0% thưởng nhầm) nhưng KHÔNG đo được độ chính xác thật: tập đồ họa tổng hợp ngoài phân bố của model ảnh thật → 100% từ chối nhầm. Độ chính xác trên ảnh thật: UNVERIFIED cho tới khi trường thu thập ảnh có nhãn và chạy npm run vision:evaluate."
+      },
+      "note": "Chọn làm mặc định theo số đo kích thước/tốc độ/RAM; ba ứng viên có mặt an toàn giống hệt nhau trên tập duy nhất có nhãn hiện có."
+    }
+  },
+  "onnxmodelzoo/mobilenetv3_large_100_Opset17": {
+    "revision": "3324b67e0f03a32fefd3dfaf9617758670d5001c",
+    "license": "Apache-2.0 (timm mobilenetv3_large_100.ra_in1k — ImageNet-1k pretrained; xuất ONNX bởi onnx/turnkeyml, opset 17)",
+    "provenance": "timm.create_model('mobilenetv3_large_100', pretrained=True) → torch.onnx.export, build x86_ort của onnxmodelzoo; 5,48 triệu tham số",
+    "input": {
+      "shape": [
+        1,
+        3,
+        224,
+        224
+      ],
+      "layout": "NCHW",
+      "channelOrder": "RGB",
+      "dtype": "float32",
+      "resize": 256,
+      "resizeRule": "resize cạnh ngắn về 256 (crop_pct 0.875 → 224/0.875), giữ tỉ lệ",
+      "crop": 224,
+      "cropRule": "cắt giữa 224x224",
+      "interpolation": "cubic",
+      "range": "0-255 → /255",
+      "mean": [
+        0.485,
+        0.456,
+        0.406
+      ],
+      "std": [
+        0.229,
+        0.224,
+        0.225
+      ]
+    },
+    "classMapping": {
+      "reusable_bottle": [
+        898
+      ],
+      "reusable_cup": [
+        504
+      ],
+      "single_use_plastic_cup": [],
+      "other_container": [
+        412,
+        440,
+        441,
+        478,
+        647,
+        653,
+        720,
+        725,
+        737,
+        883,
+        899,
+        901,
+        907,
+        968
+      ],
+      "no_container": [],
+      "unclear": "residual"
+    },
+    "classMappingNotes": "898=water bottle, 504=coffee mug, 412=ashcan, 440=beer bottle, 441=beer glass, 478=carton, 647=measuring cup, 653=milk can, 720=pill bottle, 725=pitcher, 737=pop bottle (PET — policy hiện tại không thưởng), 883=vase, 899=water jug, 901=whiskey jug, 907=wine bottle, 968=cup. ImageNet không có lớp 'ly nhựa dùng một lần' riêng → loại này không bao giờ được dự đoán bởi artifact hiện tại (hạn chế đã ghi nhận). Biến thể W2 (thận trọng hơn): 898 → residual, chỉ còn 504 thưởng được.",
+    "files": {
+      "mobilenetv3_large_100_Opset17.onnx": {
+        "size": 21919274,
+        "sha256": "b0b785f44a068dee4ff35bd88b114d4fd17a8bd635816f8f0ee46fa8b196c29f"
+      }
+    },
+    "evaluation": {
+      "status": "evaluated",
+      "measured": {
+        "date": "2026-11-05",
+        "modelSizeMb": 20.9,
+        "loadMs": 202,
+        "rssAfterLoadMb": 91,
+        "sequentialLatencyMs": {
+          "p50": 10.4,
+          "p95": 14.3
+        },
+        "peakRssMb": 171,
+        "adversarialHoldout": "0% thưởng nhầm / 100% từ chối nhầm — giống mobilenetv3_small"
+      },
+      "note": "Chậm hơn và nặng hơn small-075 mà không có lợi thế đo được trên dữ liệu hiện có."
+    }
+  },
+  "onnxmodelzoo/efficientnet_lite0_Opset17": {
+    "revision": "a576e42b3eef662a53503a8caca8a0d7f318cc2f",
+    "license": "Apache-2.0 (timm efficientnet_lite0.ra_in1k — ImageNet-1k pretrained; xuất ONNX bởi onnx/turnkeyml, opset 17)",
+    "provenance": "timm.create_model('efficientnet_lite0', pretrained=True) → torch.onnx.export, build x86_ort của onnxmodelzoo; 4,65 triệu tham số",
+    "input": {
+      "shape": [
+        1,
+        3,
+        224,
+        224
+      ],
+      "layout": "NCHW",
+      "channelOrder": "RGB",
+      "dtype": "float32",
+      "resize": 256,
+      "resizeRule": "resize cạnh ngắn về 256 (crop_pct 0.875 → 224/0.875), giữ tỉ lệ",
+      "crop": 224,
+      "cropRule": "cắt giữa 224x224",
+      "interpolation": "cubic",
+      "range": "0-255 → /255",
+      "mean": [
+        0.485,
+        0.456,
+        0.406
+      ],
+      "std": [
+        0.229,
+        0.224,
+        0.225
+      ]
+    },
+    "classMapping": {
+      "reusable_bottle": [
+        898
+      ],
+      "reusable_cup": [
+        504
+      ],
+      "single_use_plastic_cup": [],
+      "other_container": [
+        412,
+        440,
+        441,
+        478,
+        647,
+        653,
+        720,
+        725,
+        737,
+        883,
+        899,
+        901,
+        907,
+        968
+      ],
+      "no_container": [],
+      "unclear": "residual"
+    },
+    "classMappingNotes": "898=water bottle, 504=coffee mug, 412=ashcan, 440=beer bottle, 441=beer glass, 478=carton, 647=measuring cup, 653=milk can, 720=pill bottle, 725=pitcher, 737=pop bottle (PET — policy hiện tại không thưởng), 883=vase, 899=water jug, 901=whiskey jug, 907=wine bottle, 968=cup. ImageNet không có lớp 'ly nhựa dùng một lần' riêng → loại này không bao giờ được dự đoán bởi artifact hiện tại (hạn chế đã ghi nhận). Biến thể W2 (thận trọng hơn): 898 → residual, chỉ còn 504 thưởng được.",
+    "files": {
+      "efficientnet_lite0_Opset17.onnx": {
+        "size": 18560054,
+        "sha256": "0baee602f78ce8b9d6bfdf32394956c4fa42a814c8d1f31de628b6f489842311"
+      }
+    },
+    "evaluation": {
+      "status": "evaluated",
+      "measured": {
+        "date": "2026-11-05",
+        "modelSizeMb": 17.7,
+        "loadMs": 177,
+        "rssAfterLoadMb": 86,
+        "sequentialLatencyMs": {
+          "p50": 11.2,
+          "p95": 15.8
+        },
+        "peakRssMb": 164,
+        "adversarialHoldout": "0% thưởng nhầm / 100% từ chối nhầm — giống mobilenetv3_small"
+      },
+      "note": "Chậm hơn small-075, giữ lại làm phương án thay thế"
+    }
+  },
+  "greencanteen/bev9-dinov2-vitb-280-int8": {
+    "source": "local",
+    "revision": null,
+    "license": "Dữ liệu huấn luyện: Beverage Containers (roboflow-universe-projects/beverage-containers-3atxb), CC BY 4.0 — ghi công Roboflow Universe Projects. Trọng số backbone: RF-DETR 2XLarge do tài khoản trong-huynh huấn luyện trên Roboflow (weights.pt) — điều khoản sử dụng/phân phối CHƯA xác minh (PENDING OWNER DECISION).",
+    "provenance": "Backbone DINOv2 ViT-B (patch 20, 12 lớp) tách từ weights.pt (sha256 2a105011f583d6fef5260b35305b5b9f41894258ae17cfcf4ed4962faac8e4d3, Roboflow model trong-huynh/beverage-containers-3atxb-ydisr-1-rfdetr-2xlarge-t1) + hồi quy logistic 9 lớp trên [CLS, trung bình token] (C=0,03), xuất ONNX opset 17, lượng tử hóa động int8. Huấn luyện 2026-11-08 trên CPU: D:/training/session-20261107-1602 (05-continuation/README.md).",
+    "input": {
+      "shape": [
+        1,
+        3,
+        280,
+        280
+      ],
+      "layout": "NCHW",
+      "channelOrder": "RGB",
+      "dtype": "float32",
+      "resize": 320,
+      "resizeRule": "resize cạnh ngắn về 320, giữ tỉ lệ (giống lúc trích đặc trưng huấn luyện)",
+      "crop": 280,
+      "cropRule": "cắt giữa 280x280",
+      "interpolation": "cubic",
+      "range": "0-255 → /255",
+      "mean": [
+        0.485,
+        0.456,
+        0.406
+      ],
+      "std": [
+        0.229,
+        0.224,
+        0.225
+      ]
+    },
+    "classes": [
+      "bottle-glass",
+      "bottle-plastic",
+      "cup-disposable",
+      "cup-handle",
+      "glass-mug",
+      "glass-normal",
+      "glass-wine",
+      "gym bottle",
+      "tin can"
+    ],
+    "classMapping": {
+      "reusable_bottle": [
+        7
+      ],
+      "reusable_cup": [
+        3,
+        4,
+        5
+      ],
+      "single_use_plastic_cup": [
+        2
+      ],
+      "other_container": [
+        0,
+        1,
+        6,
+        8
+      ],
+      "no_container": [],
+      "unclear": "residual"
+    },
+    "classMappingNotes": "0 bottle-glass, 1 bottle-plastic, 2 cup-disposable, 3 cup-handle, 4 glass-mug, 5 glass-normal, 6 glass-wine, 7 gym bottle, 8 tin can. Cả 9 lớp đều được ánh xạ (không có residual): mô hình không có lớp \"không có vật chứa\", ảnh lạ vẫn bị gán một lớp. glass-wine → other_container (không thưởng) là lựa chọn thận trọng, PENDING OWNER DECISION.",
+    "calibratedThreshold": 0.95,
+    "secondLook": {
+      "minConfidence": 0.5,
+      "note": "Ảnh làm mờ chữ (F-26) phải vẫn là bình/ly cá nhân với độ tin cậy ≥ 0,5 (không đòi 0,95): mô hình học trên ảnh chụp mất độ tin cậy trên ảnh mờ. Chọn bằng tập thiết kế theo quy tắc ghi trước (04-eval/second-look-rule.md): giữ ngưỡng 0,95 ở lần hai chỉ còn nhận đúng 276/586 ảnh valid."
+    },
+    "selfCheck": {
+      "note": "Chấm lại các ảnh chuẩn khi nạp mô hình; lệch quá dung sai so với giá trị đo trên máy hiệu chỉnh (Windows 11, AMD Ryzen 7 7735H AVX2 không AVX-512/VNNI, onnxruntime-node 1.30.0, sharp 0.35.5, 2026-11-08) thì không nạp (VISION_SELF_CHECK=warn: chỉ ghi lỗi). Ảnh chuẩn là hình vẽ tổng hợp của repo: dùng để phát hiện máy tính khác lúc hiệu chỉnh, không đo độ chính xác.",
+      "tolerance": 0.05,
+      "images": [
+        {
+          "file": "src/data/vision-selfcheck/bottle-drawing.jpg",
+          "sha256": "c74d0f85860165f7b50227e74d4b0dba82655b42844dbed7d234d146b5f97901",
+          "firstLook": {
+            "reusable_bottle": 0.9995,
+            "other_container": 0.0004,
+            "reusable_cup": 0.0001,
+            "single_use_plastic_cup": 0,
+            "no_container": 0,
+            "unclear": 0
+          },
+          "secondLook": {
+            "reusable_bottle": 0.9966,
+            "single_use_plastic_cup": 0.0016,
+            "other_container": 0.0013,
+            "reusable_cup": 0.0005,
+            "no_container": 0,
+            "unclear": 0
+          }
+        },
+        {
+          "file": "src/data/vision-selfcheck/plain.jpg",
+          "sha256": "5c02310a750fc92ea46da72a3075ddb979a557ff8e97195692df043d2e8e0a29",
+          "firstLook": {
+            "single_use_plastic_cup": 0.5456,
+            "other_container": 0.2869,
+            "reusable_bottle": 0.1265,
+            "reusable_cup": 0.041,
+            "no_container": 0,
+            "unclear": 0
+          },
+          "secondLook": {
+            "single_use_plastic_cup": 0.5456,
+            "other_container": 0.2869,
+            "reusable_bottle": 0.1265,
+            "reusable_cup": 0.041,
+            "no_container": 0,
+            "unclear": 0
+          }
+        },
+        {
+          "file": "src/data/vision-selfcheck/plastic-cup-drawing.jpg",
+          "sha256": "e642081ed12e83c2dd1b99a1cf39a82e53015165acd71906d1c469a6a69df09f",
+          "firstLook": {
+            "single_use_plastic_cup": 0.9998,
+            "other_container": 0.0002,
+            "reusable_bottle": 0,
+            "reusable_cup": 0,
+            "no_container": 0,
+            "unclear": 0
+          },
+          "secondLook": {
+            "single_use_plastic_cup": 0.9865,
+            "reusable_cup": 0.0096,
+            "reusable_bottle": 0.0023,
+            "other_container": 0.0016,
+            "no_container": 0,
+            "unclear": 0
+          }
+        },
+        {
+          "file": "src/data/vision-selfcheck/plastic-cup-thermos-label.jpg",
+          "sha256": "5d40e9a123ae7cda1c8df00c419575de4b3264f9cdbb6bfb27edd67a95da81c4",
+          "firstLook": {
+            "single_use_plastic_cup": 0.9057,
+            "other_container": 0.0581,
+            "reusable_cup": 0.0207,
+            "reusable_bottle": 0.0155,
+            "no_container": 0,
+            "unclear": 0
+          },
+          "secondLook": {
+            "reusable_bottle": 0.7342,
+            "single_use_plastic_cup": 0.2008,
+            "other_container": 0.033,
+            "reusable_cup": 0.032,
+            "no_container": 0,
+            "unclear": 0
+          }
+        }
+      ]
+    },
+    "files": {
+      "model.int8.onnx": {
+        "size": 87429450,
+        "sha256": "3d271658d446eb97d858f1e4c2569b7b42a2136eb08282215bf910c412df9856"
+      }
+    },
+    "evaluation": {
+      "status": "opt-in",
+      "measuredWith": "pipeline check-in của server (sharp + onnxruntime-node 1.30, int8), ngưỡng 0,95, secondLook 0,5; Ryzen 7 7735H, 4 luồng, máy đang chạy việc khác",
+      "design": {
+        "bevValid": {
+          "falseAccept": "3/620",
+          "falseAcceptCI95": [
+            0.001,
+            0.0141
+          ],
+          "trueAccept": "452/586",
+          "trueAcceptCI95": [
+            0.7352,
+            0.8047
+          ]
+        },
+        "drinkingWasteA": {
+          "falseAccept": "7/800",
+          "falseAcceptCI95": [
+            0.0035,
+            0.0179
+          ]
+        },
+        "adversarialSynthetic": {
+          "falseAccept": "0/53",
+          "falseAcceptCI95": [
+            0.0,
+            0.0672
+          ],
+          "trueAccept": "17/25",
+          "trueAcceptCI95": [
+            0.465,
+            0.8505
+          ]
+        }
+      },
+      "report": {
+        "bevTest": {
+          "falseAccept": "0/318",
+          "falseAcceptCI95": [
+            0.0,
+            0.0115
+          ],
+          "trueAccept": "224/287",
+          "trueAcceptCI95": [
+            0.7281,
+            0.827
+          ]
+        },
+        "drinkingWasteB": {
+          "falseAccept": "2/800",
+          "falseAcceptCI95": [
+            0.0003,
+            0.009
+          ]
+        },
+        "adversarialHoldoutSynthetic": {
+          "falseAccept": "1/53",
+          "falseAcceptCI95": [
+            0.0005,
+            0.1007
+          ],
+          "trueAccept": "18/25",
+          "trueAcceptCI95": [
+            0.5061,
+            0.8793
+          ]
+        }
+      },
+      "unverified": "Ảnh chụp ở căn tin của trường, ảnh không có vật chứa (mô hình không có lớp \"khác\"), tấn công trình chiếu, máy cloud."
+    }
+  }
+}

@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 import { portrait } from '../../server/test/fakes/portrait.js';
 import { addPasskey, adminLogin, logout, nav, openLogin, pngFile, reauthenticate, register, studentApi, virtualAuthenticator } from '../e2e/helpers';
 
-const ADMIN_PATHS = ['/admin', '/admin/users', '/admin/stories', '/admin/stories/new', '/admin/gacha', '/admin/settings', '/admin/audit'];
+const ADMIN_PATHS = ['/admin', '/admin/users', '/admin/stories', '/admin/stories/new', '/admin/gacha', '/admin/gacha/media', '/admin/gacha/rewards', '/admin/settings', '/admin/audit'];
 
 /** Tên mọi mục trong Cache Storage của trang */
 const cachedUrls = (page) =>
@@ -35,6 +35,11 @@ test('trang quản trị chạy đủ dưới CSP: không có vi phạm nào, k�
 
   await page.goto('/admin/login');
   await expect(page.locator('meta[http-equiv="Content-Security-Policy"]')).toHaveAttribute('content', /default-src 'none'/);
+  // SEC-04: khu quản trị không tải ảnh từ máy khác: img-src không còn nguồn https: bất kỳ
+  const adminCsp = await page.locator('meta[http-equiv="Content-Security-Policy"]').getAttribute('content');
+  const imgSrc = adminCsp.split(';').map((part) => part.trim()).find((part) => part.startsWith('img-src')).split(/\s+/);
+  expect(imgSrc).toContain("'self'");
+  expect(imgSrc).not.toContain('https:');
   await adminLogin(page, request);
   await collect();
   for (const path of ADMIN_PATHS) {

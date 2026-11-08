@@ -170,7 +170,7 @@ describe('CAPTCHA', () => {
     };
     const { api, dialog } = await renderModal(routes, { initialView: 'forgot' });
     await userEvent.type(await within(dialog).findByLabelText('Email *'), 'an@example.edu.vn');
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Gửi liên kết đặt lại' }));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Gửi email đặt lại' }));
     expect(await within(dialog).findByText(/Đã gửi nếu email tồn tại/)).toBeInTheDocument();
     expect(body(api, 'POST', '/api/auth/password/forgot').captcha.nonce).toBe('0');
 
@@ -458,9 +458,9 @@ describe('quên / đặt lại mật khẩu', () => {
     });
     await userEvent.click(within(dialog).getByRole('button', { name: 'Quên mật khẩu?' }));
     await userEvent.type(await within(dialog).findByLabelText('Email *'), 'ai@example.edu.vn');
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Gửi liên kết đặt lại' }));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Gửi email đặt lại' }));
     expect(await within(dialog).findByRole('alert')).toHaveTextContent('quá nhiều lần');
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Gửi liên kết đặt lại' }));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Gửi email đặt lại' }));
     expect(await within(dialog).findByText(/Nếu email này thuộc một tài khoản/)).toBeInTheDocument();
     expect(within(dialog).getByText(/Chế độ phát triển: email được ghi vào log máy chủ/)).toBeInTheDocument();
   });
@@ -488,6 +488,130 @@ describe('quên / đặt lại mật khẩu', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: 'Lưu mật khẩu mới' }));
     expect(await within(dialog).findByRole('button', { name: 'Yêu cầu liên kết mới' })).toBeInTheDocument();
     expect(within(dialog).getByRole('alert')).toHaveTextContent('đã hết hạn hoặc đã được sử dụng');
+  });
+});
+
+describe('quên mật khẩu bằng mã trong email', () => {
+  const CODE_PROVIDERS = { 'GET /api/auth/providers': providers({ passwordReset: { enabled: true, devConsole: false, code: true } }) };
+  const SENT = json(
+    {
+      ok: true,
+      message: 'Nếu email này thuộc một tài khoản GreenCanteen, mã 6 số và liên kết đặt lại mật khẩu sẽ được gửi tới hộp thư trong vài phút.',
+      devConsole: false,
+      codeLength: 6,
+    },
+    202
+  );
+  const CODE_LABEL = 'Mã 6 số trong email *';
+
+  async function requestCode(dialog) {
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Quên mật khẩu?' }));
+    expect(await within(dialog).findByText(/mã 6 số và liên kết để đặt mật khẩu mới/)).toBeInTheDocument();
+    await userEvent.type(field(dialog, 'Email *'), 'an@example.edu.vn');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Gửi email đặt lại' }));
+    return within(dialog).findByLabelText(CODE_LABEL);
+  }
+
+  async function fillPasswords(dialog, password, confirm = password) {
+    await userEvent.type(field(dialog, 'Mật khẩu mới (ít nhất 8 ký tự) *'), password);
+    await userEvent.type(field(dialog, 'Nhập lại mật khẩu mới *'), confirm);
+  }
+
+  test('nhập mã dán từ thư (có dấu cách) + mật khẩu mới ngay trong popup → đăng nhập', async () => {
+    const { api, dialog, user } = await renderModal({
+      ...CODE_PROVIDERS,
+      'POST /api/auth/password/forgot': SENT,
+      'POST /api/auth/password/reset-code': json({ user: USER }),
+    });
+    const code = await requestCode(dialog);
+    expect(within(dialog).getByRole('status')).toHaveTextContent('mã 6 số và liên kết');
+    expect(within(dialog).getByText('an@example.edu.vn')).toBeInTheDocument();
+    expect(code).toHaveAttribute('autocomplete', 'one-time-code');
+    expect(code).toHaveAttribute('inputmode', 'numeric');
+    await userEvent.click(code);
+    await userEvent.paste('123 456');
+    expect(code).toHaveValue('123456');
+    await fillPasswords(dialog, 'mat-khau-moi-123');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Lưu mật khẩu mới' }));
+    expect(await within(dialog).findByText('Đã đặt mật khẩu mới')).toBeInTheDocument();
+    expect(body(api, 'POST', '/api/auth/password/reset-code')).toEqual({ email: 'an@example.edu.vn', code: '123456', password: 'mat-khau-moi-123' });
+    expect(user().isLoggedIn).toBe(true);
+  });
+
+  test('mã thiếu số hoặc mật khẩu nhập lại không khớp → không gọi API; mã sai → báo lỗi, xóa ô mã, giữ mật khẩu', async () => {
+    const { api, dialog } = await renderModal({
+      ...CODE_PROVIDERS,
+      'POST /api/auth/password/forgot': SENT,
+      'POST /api/auth/password/reset-code': json({ error: 'Mã không đúng hoặc đã hết hạn.', code: 'reset_code_invalid' }, 400),
+    });
+    const code = await requestCode(dialog);
+    await userEvent.type(code, '12a34');
+    expect(code).toHaveValue('1234');
+    await fillPasswords(dialog, 'mat-khau-moi-123');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Lưu mật khẩu mới' }));
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('Mã gồm 6 chữ số.');
+
+    await userEvent.type(code, '567890');
+    expect(code).toHaveValue('123456');
+    await userEvent.type(field(dialog, 'Nhập lại mật khẩu mới *'), 'x');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Lưu mật khẩu mới' }));
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('Hai mật khẩu chưa khớp nhau.');
+    expect(api.callsTo('POST', '/api/auth/password/reset-code')).toHaveLength(0);
+
+    await userEvent.type(field(dialog, 'Nhập lại mật khẩu mới *'), '{Backspace}');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Lưu mật khẩu mới' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Mã không đúng hoặc đã hết hạn.');
+    expect(code).toHaveValue('');
+    expect(field(dialog, 'Mật khẩu mới (ít nhất 8 ký tự) *')).toHaveValue('mat-khau-moi-123');
+    expect(within(dialog).getByRole('button', { name: 'Lưu mật khẩu mới' })).toBeEnabled();
+  });
+
+  test('tài khoản bật 2FA: đặt mật khẩu bằng mã xong vẫn phải qua bước hai', async () => {
+    const { dialog, user } = await renderModal({
+      ...CODE_PROVIDERS,
+      'POST /api/auth/password/forgot': SENT,
+      'POST /api/auth/password/reset-code': json({ mfaRequired: true }),
+    });
+    await userEvent.type(await requestCode(dialog), '123456');
+    await fillPasswords(dialog, 'mat-khau-moi-123');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Lưu mật khẩu mới' }));
+    expect(await within(dialog).findByLabelText('Mã xác thực *')).toBeInTheDocument();
+    expect(user().isLoggedIn).toBe(false);
+  });
+
+  test('gửi lại mã: khóa 60 giây, gửi lại báo mã cũ hết hiệu lực; "Đổi email" quay về ô nhập email', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const { api, dialog } = await renderModal({ ...CODE_PROVIDERS, 'POST /api/auth/password/forgot': SENT });
+      const ue = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      await requestCode(dialog);
+      expect(within(dialog).getByRole('button', { name: /Gửi lại mã sau \d+ giây/ })).toBeDisabled();
+      // Đồng hồ đếm ngược đặt lại setTimeout sau mỗi lần vẽ → tiến từng giây trong act để React kịp vẽ và hẹn giây tiếp theo
+      for (let s = 0; s < 61; s += 1) await act(() => vi.advanceTimersByTimeAsync(1000));
+      await ue.click(await within(dialog).findByRole('button', { name: 'Gửi lại mã' }));
+      expect(await within(dialog).findByText(/Mã và liên kết trong email trước \(nếu có\) không còn dùng được/)).toBeInTheDocument();
+      expect(api.callsTo('POST', '/api/auth/password/forgot')).toHaveLength(2);
+      expect(body(api, 'POST', '/api/auth/password/forgot')).toEqual({ email: 'an@example.edu.vn' });
+      expect(within(dialog).getByRole('button', { name: /Gửi lại mã sau \d+ giây/ })).toBeDisabled();
+
+      await ue.click(within(dialog).getByRole('button', { name: 'Đổi email' }));
+      expect(field(dialog, 'Email *')).toHaveValue('an@example.edu.vn');
+      expect(within(dialog).queryByLabelText(CODE_LABEL)).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('máy chủ không phát mã (codeLength 0): chỉ hướng dẫn mở liên kết, không có ô nhập mã', async () => {
+    const { dialog } = await renderModal({
+      'POST /api/auth/password/forgot': json({ ok: true, message: 'Nếu email này thuộc một tài khoản GreenCanteen, liên kết sẽ được gửi.', codeLength: 0 }, 202),
+    });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Quên mật khẩu?' }));
+    expect(await within(dialog).findByText(/bạn sẽ nhận được liên kết đặt mật khẩu mới/)).toBeInTheDocument();
+    await userEvent.type(field(dialog, 'Email *'), 'an@example.edu.vn');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Gửi email đặt lại' }));
+    expect(await within(dialog).findByText(/liên kết sẽ được gửi/)).toBeInTheDocument();
+    expect(within(dialog).queryByLabelText(CODE_LABEL)).not.toBeInTheDocument();
   });
 });
 

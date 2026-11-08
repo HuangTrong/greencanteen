@@ -77,7 +77,7 @@ test('2FA: bật bằng ứng dụng xác thực, đăng nhập phải qua bư�
   const dialog = await openLogin(page);
   await dialog.getByRole('button', { name: 'Quên mật khẩu?' }).click();
   await page.getByRole('dialog', { name: 'Quên mật khẩu' }).getByLabel('Email *').fill(account.email);
-  await page.getByRole('button', { name: 'Gửi liên kết đặt lại' }).click();
+  await page.getByRole('button', { name: 'Gửi email đặt lại' }).click();
   await expect(page.getByRole('dialog', { name: 'Quên mật khẩu' }).getByRole('status')).toBeVisible();
   const link = await waitForResetLink(request, account.email, { after: sentAt });
   await page.goto(link);

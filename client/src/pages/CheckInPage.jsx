@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { api } from '../lib/api';
+import { JPEG_QUALITY, prepareUpload, targetSize } from '../lib/imageCompress';
 import { useUser } from '../context/UserContext';
 import { usePageMeta } from '../lib/usePageMeta';
 import CheckInSuccessModal from '../components/CheckInSuccessModal';
@@ -16,15 +17,18 @@ export default function CheckInPage() {
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const previewUrlRef = useRef(null);
+  // Mỗi lần chọn ảnh / bật camera / chụp lại tăng số này: kết quả nén của lần chọn cũ về muộn thì bỏ qua
+  const pickToken = useRef(0);
 
   const [preview, setPreview] = useState(null);
   const [file, setFile] = useState(null);
   const [cameraOn, setCameraOn] = useState(false);
+  const [preparing, setPreparing] = useState(false); // đang nén ảnh vừa chọn
   const [step, setStep] = useState(STEPS.idle);
   const [message, setMessage] = useState('');
   const [result, setResult] = useState(null); // { classification, story, points, gacha }
   const [modalOpen, setModalOpen] = useState(false);
-  // Server cho biết check-in có khả dụng không: local | simulated | unavailable (+ engine: clip | ollama | ensemble)
+  // Server cho biết check-in có khả dụng không: local | simulated | unavailable (+ engine: classifier — bộ phân loại ONNX trên CPU)
   const [service, setService] = useState({ loading: true, error: '', data: null });
 
   useEffect(() => {
@@ -50,9 +54,10 @@ export default function CheckInPage() {
     }
   }, [cameraOn]);
 
-  // Dừng camera + giải phóng preview khi rời trang
+  // Dừng camera + giải phóng preview khi rời trang; ảnh đang nén dở thì bỏ kết quả
   useEffect(() => {
     return () => {
+      pickToken.current += 1;
       streamRef.current?.getTracks().forEach((t) => t.stop());
       if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
     };
@@ -107,9 +112,15 @@ export default function CheckInPage() {
     setCameraOn(false);
   };
 
+  const cancelPendingPick = () => {
+    pickToken.current += 1;
+    setPreparing(false);
+  };
+
   const startCamera = async () => {
     try {
       stopCamera();
+      cancelPendingPick();
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'environment' },
         audio: false,
@@ -133,10 +144,12 @@ export default function CheckInPage() {
       setMessage('Camera chưa sẵn sàng. Đợi một giây rồi chụp lại.');
       return;
     }
+    // Thu nhỏ về cạnh dài tối đa 2048 px như ảnh chọn từ thư viện (camera 4K cho ảnh vài MB, quá sức proxy và mạng di động)
+    const { width, height } = targetSize(video.videoWidth, video.videoHeight);
     const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    canvas.getContext('2d').drawImage(video, 0, 0);
+    canvas.width = width;
+    canvas.height = height;
+    canvas.getContext('2d').drawImage(video, 0, 0, width, height);
     canvas.toBlob(
       (blob) => {
         if (!blob) {
@@ -150,36 +163,56 @@ export default function CheckInPage() {
         stopCamera();
       },
       'image/jpeg',
-      0.92
+      JPEG_QUALITY
     );
   };
 
   /** Kiểm tra sơ bộ để báo lỗi sớm — server vẫn kiểm tra lại nội dung tệp */
-  const fileProblem = (f) => {
+  const typeProblem = (f) => {
     if (!f.size) return 'Ảnh rỗng. Vui lòng chọn ảnh khác.';
     if (f.type && !f.type.startsWith('image/')) return 'Tệp đã chọn không phải ảnh.';
-    if (maxBytes && f.size > maxBytes) {
-      return `Ảnh quá lớn (${(f.size / 1048576).toFixed(1)}MB, tối đa ${Math.round(maxBytes / 1048576)}MB). Hãy chụp lại hoặc chọn ảnh nhỏ hơn.`;
-    }
     return '';
   };
+  // Giới hạn kích thước áp cho tệp sẽ gửi đi (sau khi nén), không phải ảnh gốc
+  const sizeProblem = (f) =>
+    maxBytes && f.size > maxBytes
+      ? `Ảnh quá lớn (${(f.size / 1048576).toFixed(1)}MB, tối đa ${Math.round(maxBytes / 1048576)}MB). Hãy chụp lại hoặc chọn ảnh nhỏ hơn.`
+      : '';
 
-  const onPickFile = (e) => {
+  const showPickError = (problem) => {
+    setFile(null);
+    setPreviewUrl(null);
+    setStep(STEPS.error);
+    setMessage(problem);
+  };
+
+  const onPickFile = async (e) => {
     const f = e.target.files?.[0];
     e.target.value = ''; // chọn lại cùng một tệp vẫn kích hoạt onChange
     if (!f) return;
     stopCamera();
     resetResult();
-    const problem = fileProblem(f);
+    const token = ++pickToken.current;
+    const problem = typeProblem(f);
     if (problem) {
-      setFile(null);
-      setPreviewUrl(null);
-      setStep(STEPS.error);
-      setMessage(problem);
+      setPreparing(false);
+      showPickError(problem);
       return;
     }
-    setFile(f);
-    setPreviewUrl(URL.createObjectURL(f));
+    // Ảnh lớn được thu nhỏ / nén JPEG để qua được proxy của nơi đặt giao diện và tải nhanh; không nén được thì giữ ảnh gốc
+    setPreparing(true);
+    setFile(null);
+    setPreviewUrl(null);
+    const prepared = await prepareUpload(f);
+    if (token !== pickToken.current) return; // đã chọn ảnh khác hoặc bật camera trong lúc nén
+    setPreparing(false);
+    const tooLarge = sizeProblem(prepared.file);
+    if (tooLarge) {
+      showPickError(tooLarge);
+      return;
+    }
+    setFile(prepared.file);
+    setPreviewUrl(URL.createObjectURL(prepared.file));
   };
 
   const submitCheckIn = async () => {
@@ -213,6 +246,7 @@ export default function CheckInPage() {
   };
 
   const reset = () => {
+    cancelPendingPick();
     setPreviewUrl(null);
     setFile(null);
     resetResult();
@@ -227,7 +261,7 @@ export default function CheckInPage() {
         <h2 className="text-xl font-extrabold text-leaf-800">Check-in thông minh</h2>
         <p className="text-sm text-stone-500">
           Chụp bình nước hoặc ly/cốc cá nhân tại quầy căn tin. Thành công: +Eco-points, một câu chuyện từ nghiên cứu khoa
-          học và 1 lượt Gacha (mã nạp điện thoại).
+          học và 1 lượt quay thưởng tri ân (quà là móc khóa, trúng hay không do may mắn).
         </p>
       </div>
 
@@ -250,11 +284,11 @@ export default function CheckInPage() {
       )}
       {mode === 'local' && (
         <p className="text-xs text-stone-500">
-          Ảnh được nhận diện ngay trên máy chủ của trường, không gửi cho dịch vụ bên ngoài. Chỉ bình/ly cá nhân với độ tin
+          Ảnh được nhận diện ngay trên máy chủ GreenCanteen, không gửi cho dịch vụ AI bên ngoài. Chỉ bình/ly cá nhân với độ tin
           cậy từ {percent(service.data.threshold)} trở lên mới được tính điểm.
-          {service.data.engine === 'ensemble' && ' Hai bộ nhận diện phải cùng nhận ra bình/ly cá nhân.'}
           {service.data.cooldownMinutes > 0 &&
             ` Mỗi lượt được thưởng cách nhau ít nhất ${service.data.cooldownMinutes} phút.`}
+          {service.data.dailyMax > 0 && ` Mỗi ngày được thưởng tối đa ${service.data.dailyMax} lượt.`}
         </p>
       )}
 
@@ -330,11 +364,11 @@ export default function CheckInPage() {
 
       <button
         type="button"
-        disabled={step === STEPS.analyzing || unavailable || service.loading}
+        disabled={step === STEPS.analyzing || preparing || unavailable || service.loading}
         onClick={submitCheckIn}
         className="w-full rounded-2xl bg-gradient-to-r from-leaf-600 to-leaf-500 py-4 text-base font-extrabold text-white shadow-lg disabled:opacity-50"
       >
-        {step === STEPS.analyzing ? 'Đang xử lý...' : 'Check-in ngay'}
+        {step === STEPS.analyzing ? 'Đang xử lý...' : preparing ? 'Đang chuẩn bị ảnh...' : 'Check-in ngay'}
       </button>
 
       {(preview || step !== STEPS.idle) && step !== STEPS.analyzing && (

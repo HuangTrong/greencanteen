@@ -1,4 +1,4 @@
-// Phần end-user mới: thiết lập công khai, SEO theo trang, sự kiện truy cập tối thiểu, ghi chú mã demo
+// Phần end-user mới: thiết lập công khai, SEO theo trang, sự kiện truy cập tối thiểu, lời nói rõ về quay thưởng
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -59,7 +59,7 @@ describe('thiết lập công khai', () => {
   });
 
   test('thông tin liên hệ hiện ở trang Cá nhân khi có', async () => {
-    mockApi({ 'GET /api/auth/me': json({ user: USER }), ...settingsRoute(), 'GET /api/gacha/rewards': json({ rewards: [], pendingGachaSpins: 0 }), 'GET /api/checkin/history': json({ history: [] }), 'GET /api/auth/providers': json({ providers: {} }) });
+    mockApi({ 'GET /api/auth/me': json({ user: USER }), ...settingsRoute(), 'GET /api/gacha/results': json({ pendingGachaSpins: 0, stats: { spins: 0, wins: 0 }, rewards: [] }), 'GET /api/checkin/history': json({ history: [] }), 'GET /api/auth/providers': json({ providers: {} }) });
     renderApp('/profile');
     expect(await screen.findByText('Liên hệ: Phòng Công tác sinh viên')).toBeInTheDocument();
   });
@@ -212,11 +212,20 @@ describe('sự kiện truy cập', () => {
   });
 });
 
-describe('không khẳng định mã đổi được', () => {
-  test('danh sách phần thưởng ở trang Cá nhân ghi rõ mã demo', async () => {
-    mockApi({ 'GET /api/auth/me': json({ user: USER }), 'GET /api/gacha/rewards': json({ rewards: [], pendingGachaSpins: 0 }), 'GET /api/checkin/history': json({ history: [] }), 'GET /api/auth/providers': json({ providers: {} }) });
+describe('không hứa hẹn quá thực tế', () => {
+  test('trang Cá nhân nói rõ trúng hay không do may mắn; mã nạp demo cũ ghi rõ không có giá trị', async () => {
+    const legacy = { id: 'r0', type: 'phone_topup', carrier: 'Viettel', amountVnd: 10000, topUpCode: 'GC-10K-CU', createdAt: '2026-10-01T03:00:00.000Z' };
+    mockApi({
+      'GET /api/auth/me': json({ user: USER }),
+      'GET /api/gacha/results': json({ pendingGachaSpins: 0, stats: { spins: 1, wins: 0 }, rewards: [legacy] }),
+      'GET /api/checkin/history': json({ history: [] }),
+      'GET /api/auth/providers': json({ providers: {} }),
+    });
     renderApp('/profile');
-    expect(await screen.findByText(/Mã demo cho môi trường thử nghiệm, chưa đổi được tại nhà mạng/)).toBeInTheDocument();
+    expect(await screen.findByText(/trúng hay không hoàn toàn do may mắn/)).toBeInTheDocument();
+    expect(await screen.findByText('Mã nạp demo cũ (1)')).toBeInTheDocument();
+    expect(screen.getByText(/không phải mã của nhà mạng, không có giá trị sử dụng/)).toBeInTheDocument();
+    expect(screen.queryByText(/100%/)).not.toBeInTheDocument();
   });
 });
 

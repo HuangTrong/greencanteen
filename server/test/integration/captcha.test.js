@@ -97,11 +97,11 @@ describe('chế độ thích ứng khi đăng nhập', () => {
     const c = client();
     const email = stranger();
     for (let i = 0; i < 3; i += 1) await login(c, email);
-    const before_ = await RateLimit.findOne({ key: `login-fail:${email}` }).lean();
+    const before_ = await RateLimit.findOne({ key: `login-fail:${hashToken(email)}` }).lean();
     const started = performance.now();
     for (let i = 0; i < 5; i += 1) assert.equal((await login(c, email)).data.code, 'captcha_required');
     assert.ok(performance.now() - started < 200, 'không băm mật khẩu');
-    assert.equal((await RateLimit.findOne({ key: `login-fail:${email}` }).lean()).count, before_.count);
+    assert.equal((await RateLimit.findOne({ key: `login-fail:${hashToken(email)}` }).lean()).count, before_.count);
   });
 
   test('không lộ email tồn tại: email có tài khoản và email lạ cùng bị đòi ở đúng lượt thứ 4, phản hồi giống hệt', async () => {

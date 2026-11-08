@@ -6,7 +6,7 @@ body {
   font-family: 'Nunito', system-ui, sans-serif;
 }
 
-/* privacy.html, data-deletion.html là HTML tĩnh viết tay nên định dạng theo thẻ thay vì gắn lớp cho từng đoạn */
+/* Các trang thông tin, chính sách (src/legal/pages.js) là HTML tĩnh viết tay nên định dạng theo thẻ thay vì gắn lớp cho từng đoạn */
 @layer components {
   .legal h1 {
     @apply text-2xl font-extrabold text-leaf-800;
@@ -44,6 +44,21 @@ body {
   }
   .legal th {
     @apply font-bold text-stone-800;
+  }
+  /* Bảng nhiều cột: cuộn ngang trong khung của bảng thay vì làm cả trang tràn ngang trên điện thoại */
+  .legal .legal-table {
+    @apply mt-2 overflow-x-auto;
+  }
+  .legal .legal-table table {
+    @apply mt-0;
+  }
+  /* Phần chưa công bố vì thiếu dữ kiện đã xác minh: tìm trong mã nguồn bằng data-pending */
+  .legal .legal-pending {
+    @apply mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900;
+  }
+  /* Thông báo quan trọng (vd. mã thưởng là mã demo) */
+  .legal .legal-notice {
+    @apply mt-3 rounded-xl border border-leaf-200 bg-leaf-50 px-3 py-2 text-leaf-900;
   }
 }
 

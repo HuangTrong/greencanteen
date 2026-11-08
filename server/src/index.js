@@ -4,9 +4,10 @@ import { createApp } from './app.js';
 import { cleanupUploads } from './routes/checkin.js';
 import { syncStories } from './services/stories.js';
 import { runMigrations } from './services/migrations.js';
-import { ensureDefaultGachaConfig } from './services/gachaConfig.js';
+import { getActiveGachaConfig } from './services/gachaConfig.js';
 import { logAdminStatus } from './services/adminBootstrap.js';
 import { recoverOutboxes } from './services/rewards.js';
+import { flushAuditOutbox } from './services/audit.js';
 import { logAuthProviderStatus } from './services/oauth.js';
 import { logVisionStatus, warmUpVision } from './services/vision.js';
 import { verifyEmailTransport } from './services/email.js';
@@ -14,7 +15,7 @@ import { createHttpServer } from './services/httpServer.js';
 import { logMalwareScanStatus } from './services/malwareScan.js';
 import { logProxyStatus } from './services/rateLimit.js';
 import { logSecurityConfig } from './services/securityConfig.js';
-import { env, envFlag, isProduction } from './services/config.js';
+import { env, envFlag, isProduction, listenHost } from './services/config.js';
 
 dotenv.config();
 
@@ -73,6 +74,7 @@ function enableGracefulShutdown(server) {
 async function runMaintenance() {
   try {
     await recoverOutboxes();
+    await flushAuditOutbox();
     await cleanupUploads(15 * 60 * 1000);
   } catch (err) {
     console.error('Maintenance failed:', err.message);
@@ -87,7 +89,7 @@ async function start() {
   mongoose.connection.on('reconnected', () => console.log('MongoDB reconnected.'));
 
   // Trước khi nhận request: dọn tệp tạm sót lại, chạy migration, đồng bộ câu chuyện có nguồn (giữ nguyên nội dung admin
-  // quản lý), bảo đảm có cấu hình Gacha, hoàn tất thưởng bị gián đoạn
+  // quản lý), hoàn tất thưởng bị gián đoạn
   const removedUploads = await cleanupUploads(0);
   if (removedUploads) console.log(`Removed ${removedUploads} leftover upload file(s).`);
   const migrations = await runMigrations();
@@ -96,12 +98,19 @@ async function start() {
   console.log(
     `Stories synced: ${stories.upserted} sourced stories${stories.keptAdminManaged ? `, kept ${stories.keptAdminManaged} admin-managed` : ''}${stories.removedUnsourced ? `, removed ${stories.removedUnsourced} unsourced` : ''}.`
   );
-  if (await ensureDefaultGachaConfig()) console.log('Gacha: đã tạo cấu hình phiên bản 1 từ bộ giải mặc định.');
+  if (!(await getActiveGachaConfig())) {
+    console.log('Quay thưởng tri ân đang tạm dừng: chưa có phiên bản móc khóa nào đang hiệu lực (khu quản trị → Quay thưởng tri ân).');
+  }
   const recovered = await recoverOutboxes();
   if (recovered) console.log(`Recovered pending rewards for ${recovered} user outbox(es).`);
+  // Dấu vết kiểm toán sót lại (server dừng giữa thao tác của quản trị viên). Chỉ chuyển dấu vết cũ hơn 1 phút: tiến trình khác chạy
+  // cùng DB có thể đang làm dở thao tác; phần còn lại được chuyển ở lần bảo trì định kỳ
+  const audits = await flushAuditOutbox();
+  if (audits) console.log(`Recovered ${audits} pending audit log entr${audits === 1 ? 'y' : 'ies'}.`);
 
-  const server = createHttpServer(createApp()).listen(PORT, () => {
-    console.log(`GreenCanteen API http://localhost:${PORT}`);
+  const host = listenHost();
+  const server = createHttpServer(createApp()).listen(PORT, host, () => {
+    console.log(`GreenCanteen API http://${host.includes(':') ? `[${host.replace(/^\[|\]$/g, '')}]` : host}:${PORT}`);
     logSecurityConfig();
     logProxyStatus();
     logVisionStatus();
@@ -115,7 +124,7 @@ async function start() {
     console.error(
       err.code === 'EADDRINUSE'
         ? `Cổng ${PORT} đang được tiến trình khác dùng (có thể là một server GreenCanteen khác). Tắt tiến trình đó hoặc đổi PORT.`
-        : `Không mở được cổng ${PORT}: ${err.message}`
+        : `Không mở được cổng ${PORT} trên ${host}: ${err.message}`
     );
     process.exit(1);
   });

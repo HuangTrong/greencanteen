@@ -13,8 +13,11 @@ const serverRoot = path.resolve(__dirname, '../..');
  * Mô hình đã ghim: commit trên Hugging Face Hub + kích thước + mã băm từng tệp. Mô hình chỉ vào máy qua
  * `npm run vision:download` (kiểm tra mã băm trước khi ghi); server không bao giờ tự tải mô hình lúc chạy.
  */
-export const MODEL_MANIFEST = JSON.parse(fs.readFileSync(path.join(__dirname, '../data/vision-models.json'), 'utf8'));
-export const DEFAULT_CLIP_MODEL = 'Xenova/clip-vit-base-patch16';
+const { _format, ...classifierEntries } = JSON.parse(fs.readFileSync(path.join(__dirname, '../data/classifier-models.json'), 'utf8'));
+/** Danh sách mô hình đã ghim (bộ phân loại ONNX) — dùng cho npm run vision:download / vision:verify */
+export const MODEL_MANIFEST = { ...classifierEntries };
+export { classifierEntries as CLASSIFIER_MANIFEST };
+export const DEFAULT_CLASSIFIER_MODEL = 'onnxmodelzoo/mobilenetv3_small_075_Opset17';
 
 export const modelDir = () => path.resolve(serverRoot, env('VISION_MODEL_DIR') || 'models');
 export const modelFilePath = (model, file, dir = modelDir()) => path.join(dir, ...model.split('/'), ...file.split('/'));
@@ -51,18 +54,32 @@ export async function verifyModelFiles(model, dir = modelDir(), manifest = MODEL
   return problems;
 }
 
-/** Tải mô hình theo commit đã ghim; mỗi tệp được kiểm tra kích thước + mã băm TRƯỚC khi đặt vào thư mục mô hình */
-export async function downloadModel(model, { dir = modelDir(), manifest = MODEL_MANIFEST, fetchImpl = fetch, log = console.log } = {}) {
+/**
+ * Tải mô hình theo commit đã ghim; mỗi tệp được kiểm tra kích thước + mã băm TRƯỚC khi đặt vào thư mục mô hình.
+ * Mô hình huấn luyện tại chỗ (source: "local") không có trên Hugging Face: chỉ tải khi người vận hành đưa địa chỉ HTTPS của tệp (url,
+ * lấy từ VISION_MODEL_URL), vẫn kiểm đúng kích thước + sha256 ghim trong manifest; không có url thì báo cách chép tệp vào.
+ */
+export async function downloadModel(model, { dir = modelDir(), manifest = MODEL_MANIFEST, fetchImpl = fetch, log = console.log, url = null } = {}) {
   const entry = manifest[model];
-  if (!entry) throw new Error(`Mô hình "${model}" không có trong danh sách đã ghim (src/data/vision-models.json).`);
+  if (!entry) throw new Error(`Mô hình "${model}" không có trong danh sách đã ghim (src/data/classifier-models.json).`);
+  if (url) {
+    if (entry.source !== 'local') throw new Error('VISION_MODEL_URL chỉ dùng cho mô hình huấn luyện tại chỗ; mô hình trên Hugging Face luôn tải theo commit đã ghim.');
+    if (!/^https:\/\//i.test(url)) throw new Error('VISION_MODEL_URL phải là địa chỉ https://.');
+    if (Object.keys(entry.files).length !== 1) throw new Error(`Mô hình "${model}" có nhiều tệp, VISION_MODEL_URL chỉ trỏ được tới một tệp.`);
+  }
   for (const [file, expected] of Object.entries(entry.files)) {
     const target = modelFilePath(model, file, dir);
     if (!(await fileProblem(target, expected))) {
       log(`✔ ${file} (đã có, đúng mã băm)`);
       continue;
     }
+    if (entry.source === 'local' && !url) {
+      throw new Error(
+        `Mô hình "${model}" được huấn luyện tại chỗ, không có nơi tải tự động. Chép ${file} (${expected.size} byte, sha256 ${expected.sha256}) vào ${target} rồi chạy "npm run vision:verify ${model}", hoặc đặt VISION_MODEL_URL là địa chỉ HTTPS của tệp rồi chạy "npm run vision:download ${model}".`
+      );
+    }
     log(`↓ ${file} (${(expected.size / 1048576).toFixed(1)} MB)`);
-    const res = await fetchImpl(`https://huggingface.co/${model}/resolve/${entry.revision}/${file}`, {
+    const res = await fetchImpl(entry.source === 'local' ? url : `https://huggingface.co/${model}/resolve/${entry.revision}/${file}`, {
       redirect: 'follow',
       signal: AbortSignal.timeout(30 * 60 * 1000),
     });

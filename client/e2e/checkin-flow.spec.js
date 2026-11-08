@@ -1,11 +1,12 @@
 // Kiểm thử hệ thống: trình duyệt thật → Vite → API → MongoDB (in-memory). Luồng chính của sinh viên.
 import { expect, test } from '@playwright/test';
+import { bigPhoto } from '../../server/test/fakes/photo.js';
 import { portrait } from '../../server/test/fakes/portrait.js';
 import { login, logout, nav, pngFile, register } from './helpers';
 
 const statValue = (page, label) => page.getByText(label, { exact: true }).locator('xpath=preceding-sibling::p');
 
-test('đăng ký → check-in bằng ảnh tải lên → câu chuyện có nguồn → Gacha → hồ sơ, lịch sử, ảnh đại diện, xếp hạng → đăng xuất → đăng nhập lại', async ({ page }, testInfo) => {
+test('đăng ký → check-in bằng ảnh tải lên → câu chuyện có nguồn → quay thưởng tri ân → hồ sơ, lịch sử, ảnh đại diện, xếp hạng → đăng xuất → đăng nhập lại', async ({ page }, testInfo) => {
   const account = await register(page);
   expect(await page.evaluate(() => document.cookie)).not.toContain('gc_session');
 
@@ -25,10 +26,13 @@ test('đăng ký → check-in bằng ảnh tải lên → câu chuyện có ngu�
   await expect(doi).toHaveAttribute('target', '_blank');
   await expect(doi).toHaveAttribute('rel', 'noopener noreferrer');
 
-  await story.getByRole('button', { name: /Quay Gacha/ }).click();
-  const prize = page.getByRole('dialog', { name: 'Phần thưởng Gacha' });
+  await story.getByRole('button', { name: 'Quay thưởng tri ân' }).click();
+  const prize = page.getByRole('dialog', { name: 'Kết quả quay thưởng' });
   await expect(prize).toBeVisible();
-  const code = (await prize.getByText(/^GC-\d+K-[0-9A-F]{8}$/).textContent()).trim();
+  // Máy chủ E2E cấu hình một mẫu móc khóa trúng 100% để kịch bản có kết quả xác định
+  await expect(prize.getByRole('heading', { name: 'Trúng thưởng!' })).toBeVisible();
+  await expect(prize.getByRole('img', { name: 'Móc khóa Lá xanh' })).toBeVisible();
+  const code = (await prize.getByText(/^TA-[2-9A-HJKMNP-Z]{5}-[2-9A-HJKMNP-Z]{5}$/).textContent()).trim();
   await prize.getByRole('button', { name: 'Hoàn tất' }).click();
   await expect(prize).toBeHidden();
 
@@ -125,4 +129,35 @@ test.describe('camera', () => {
     await page.getByRole('button', { name: 'Check-in ngay' }).click();
     await expect(page.getByRole('dialog', { name: 'Check-in thành công' })).toBeVisible();
   });
+});
+
+// Giao diện đặt ở Vercel / Render chuyển tiếp /api qua proxy có thể giới hạn kích thước request: ảnh chụp lớn phải được trình duyệt thu
+// nhỏ (cạnh dài 2048 px) và nén JPEG trước khi gửi, đúng chiều theo EXIF (bản gửi đi không còn cờ xoay để máy chủ xoay lần nữa)
+test('ảnh chụp 24 MP nặng hơn giới hạn 8 MB, có cờ xoay EXIF: được thu nhỏ đúng chiều trước khi gửi và check-in thành công', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__uploads = [];
+    const originalFetch = window.fetch;
+    window.fetch = async (input, init) => {
+      if (String(input).includes('/api/checkin') && init?.body instanceof FormData) {
+        const image = init.body.get('image');
+        const bitmap = await createImageBitmap(image);
+        window.__uploads.push({ name: image.name, type: image.type, size: image.size, width: bitmap.width, height: bitmap.height });
+        bitmap.close();
+      }
+      return originalFetch(input, init);
+    };
+  });
+  await register(page);
+  await nav(page, 'Check-in').click();
+  const photo = await bigPhoto();
+  expect(photo.length).toBeGreaterThan(8 * 1024 * 1024);
+  await page.locator('input[type="file"]').setInputFiles({ name: 'IMG_6000.jpg', mimeType: 'image/jpeg', buffer: photo });
+  await expect(page.getByAltText('Xem trước ảnh check-in')).toBeVisible();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Check-in ngay' }).click();
+  await expect(page.getByRole('dialog', { name: 'Check-in thành công' })).toBeVisible();
+  const [sent] = await page.evaluate(() => window.__uploads);
+  expect(sent).toMatchObject({ name: 'IMG_6000.jpg', type: 'image/jpeg', width: 1365, height: 2048 });
+  expect(sent.size).toBeLessThan(8 * 1024 * 1024);
+  expect(sent.size).toBeLessThan(photo.length / 2);
 });

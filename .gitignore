@@ -17,3 +17,10 @@ test-results/
 playwright-report/
 blob-report/
 /server/models/
+
+# Trọng số mô hình ở bất kỳ đâu: giấy phép bev9 chưa xác minh, tải bằng npm run vision:download
+*.onnx
+*.pt
+*.safetensors
+# Mật khẩu root nếu lỡ cài MongoDB vào trong dự án (setup --mongo-dir)
+mongodb-admin.txt

@@ -2,8 +2,21 @@ import { fileURLToPath } from 'node:url';
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+import { LEGAL_PAGES, legalFooterHtml } from './src/legal/pages.js';
 
 const fromRoot = (path) => fileURLToPath(new URL(path, import.meta.url));
+
+/** Chân trang chung của các trang thông tin, chính sách (HTML tĩnh): chèn vào chỗ <!--legal-footer--> cả khi dev lẫn khi build */
+function legalFooter() {
+  const marker = '<!--legal-footer-->';
+  return {
+    name: 'legal-footer',
+    transformIndexHtml: {
+      order: 'pre',
+      handler: (html, { path }) => (html.includes(marker) ? html.replace(marker, legalFooterHtml(path)) : html),
+    },
+  };
+}
 
 /** Đường dẫn con của khu quản trị (vd. /admin/users) đều trả về trang HTML riêng của khu quản trị */
 function adminSpaFallback() {
@@ -20,14 +33,15 @@ function adminSpaFallback() {
 }
 
 /**
- * Lớp phòng thủ trong bản build, không áp dụng khi chạy dev vì Vite cần script nội tuyến. Trang quản trị: CSP chỉ cho nạp mã cùng nguồn,
- * không tải tài nguyên bên thứ ba, không đăng ký service worker, không khai báo PWA. Trang sinh viên: CSP cho thêm đúng những gì giao diện
+ * Lớp phòng thủ trong bản build, không áp dụng khi chạy dev vì Vite cần script nội tuyến. Trang quản trị: CSP chỉ cho nạp mã và ảnh cùng
+ * nguồn (hoặc từ API), không tải tài nguyên bên thứ ba, không đăng ký service worker, không khai báo PWA. Trang sinh viên: CSP cho thêm đúng những gì giao diện
  * cần: font Google, ảnh câu chuyện (https), ảnh xem trước chọn từ máy (blob), service worker.
  */
 function pageHardening(apiUrl) {
   const connect = apiUrl ? `'self' ${new URL(apiUrl).origin}` : "'self'";
   const base = ["default-src 'none'", "script-src 'self'", `connect-src ${connect}`, "base-uri 'none'", "form-action 'self'"];
-  const adminCsp = [...base, "style-src 'self'", "img-src 'self' https: data:"].join('; ');
+  // SEC-04: khu quản trị chỉ hiện ảnh của chính hệ thống (cùng nguồn hoặc API) và mã QR dạng data:, không tải ảnh từ máy khác
+  const adminCsp = [...base, "style-src 'self'", `img-src ${connect} data:`].join('; ');
   const publicCsp = [
     ...base,
     "style-src 'self' https://fonts.googleapis.com",
@@ -53,7 +67,7 @@ function pageHardening(apiUrl) {
 
 /** robots.txt và sitemap.xml cho trang công khai. Sitemap cần địa chỉ tuyệt đối nên chỉ có khi đặt VITE_SITE_URL */
 function seoFiles(siteUrl) {
-  const pages = ['/', '/leaderboard', '/privacy.html', '/data-deletion.html'];
+  const pages = ['/', '/leaderboard', ...LEGAL_PAGES.map((page) => page.path)];
   return {
     name: 'seo-files',
     generateBundle() {
@@ -109,6 +123,7 @@ export default defineConfig(({ mode }) => {
         },
       }),
       adminSpaFallback(),
+      legalFooter(),
       pageHardening(env.VITE_API_URL),
       seoFiles(env.VITE_SITE_URL),
     ],
@@ -117,9 +132,8 @@ export default defineConfig(({ mode }) => {
         input: {
           index: fromRoot('./index.html'),
           admin: fromRoot('./admin/index.html'),
-          // HTML tĩnh, không qua React: trình thu thập của Meta đọc được nội dung mà không cần chạy JavaScript
-          privacy: fromRoot('./privacy.html'),
-          dataDeletion: fromRoot('./data-deletion.html'),
+          // HTML tĩnh, không qua React: trình thu thập của Meta, công cụ tìm kiếm đọc được nội dung mà không cần chạy JavaScript
+          ...Object.fromEntries(LEGAL_PAGES.map(({ path }) => [path.slice(1, -'.html'.length), fromRoot(`.${path}`)])),
         },
       },
     },
@@ -128,7 +142,8 @@ export default defineConfig(({ mode }) => {
       proxy: {
         '/api': {
           // Kiểm thử hệ thống (Playwright) trỏ sang API thử nghiệm riêng; mặc định là server dev
-          target: process.env.API_PROXY_TARGET || 'http://localhost:3001',
+          // 127.0.0.1 thay vì localhost: API mặc định chỉ nghe IPv4 loopback (HOST), localhost có thể phân giải ra ::1 trước
+          target: process.env.API_PROXY_TARGET || 'http://127.0.0.1:3001',
           changeOrigin: true,
         },
       },

@@ -20,6 +20,8 @@ Object.assign(process.env, {
   EMAIL_TRANSPORT: 'console',
   QR_LOGIN_ENABLED: 'true',
   CHECKIN_COOLDOWN_MINUTES: '0',
+  // Kịch bản check-in nhiều lần trong ngày với cùng một tài khoản: tắt trần lượt thưởng mỗi ngày (mặc định 3)
+  CHECKIN_DAILY_MAX: '0',
   // Mọi kịch bản chạy từ cùng một IP 127.0.0.1
   AUTH_REGISTER_IP_MAX: '1000000',
   API_RATE_LIMIT_PER_MINUTE: '0',
@@ -58,7 +60,7 @@ process.env.CLAMAV_PORT = String(clamd.port);
 const { createApp } = await import('../../src/app.js');
 const { syncStories } = await import('../../src/services/stories.js');
 const { runMigrations } = await import('../../src/services/migrations.js');
-const { ensureDefaultGachaConfig } = await import('../../src/services/gachaConfig.js');
+const { createMedia, publishKeychainConfig } = await import('../gachaHelpers.js');
 const { issueEnrollCode } = await import('../../src/services/adminMfa.js');
 const { hashPassword } = await import('../../src/services/password.js');
 const { User } = await import('../../src/models/User.js');
@@ -69,7 +71,10 @@ await mongoose.connect(mem.getUri('greencanteen-e2e'));
 await Promise.all(mongoose.modelNames().map((name) => mongoose.model(name).init()));
 await runMigrations();
 await syncStories();
-await ensureDefaultGachaConfig();
+// Quay thưởng tri ân: một mẫu móc khóa trúng 100% để kịch bản E2E có kết quả xác định, kèm sticker trúng / không trúng
+await publishKeychainConfig();
+await createMedia('win', 'Pháo hoa E2E');
+await createMedia('lose', 'Cỏ bốn lá E2E');
 
 const api = createApp().listen(API_PORT, '127.0.0.1', () => log(`E2E API http://127.0.0.1:${API_PORT} (DB in-memory)`));
 

@@ -1,71 +1,59 @@
 import { env, envFlag, envNumber, isProduction } from './config.js';
 import { CATEGORIES, CATEGORY_LABELS, REWARDABLE_CATEGORIES, VisionEngineError } from './visionShared.js';
-import { DEFAULT_CLIP_MODEL, MODEL_MANIFEST, modelDir } from './visionModels.js';
-import { classifyWithOllama, isAllowedOllamaUrl, isOllamaCloudModel } from './visionOllama.js';
-import { classifyWithClip, loadClassifier, suppressText } from './visionClip.js';
+import { CLASSIFIER_MANIFEST, DEFAULT_CLASSIFIER_MODEL, modelDir } from './visionModels.js';
+import { classifyWithClassifier, loadClassifier, suppressText } from './visionClassifier.js';
 
 export { CATEGORIES, CATEGORY_LABELS, REWARDABLE_CATEGORIES, VisionEngineError };
-export { parseClassification } from './visionOllama.js';
 
-const ENGINES = ['clip', 'ollama', 'ensemble'];
-const DEFAULT_OLLAMA_URL = 'http://127.0.0.1:11434';
-const DEFAULT_OLLAMA_MODEL = 'qwen3-vl:4b-instruct';
-const usesClip = (engine) => engine === 'clip' || engine === 'ensemble';
-const usesOllama = (engine) => engine === 'ollama' || engine === 'ensemble';
+const ENGINES = ['classifier'];
+// Bộ nhận diện cũ (CLIP, VLM trên Ollama, chế độ kết hợp hai bộ) đã bị gỡ khỏi server. Cấu hình còn sót tên cũ bị
+// coi là không hợp lệ: check-in tắt, không tự chuyển sang classifier.
+const REMOVED_ENGINES = ['ensemble', 'clip', 'ollama'];
 
 /**
- * Cấu hình nhận diện, đọc lại mỗi lần gọi. Ảnh luôn được xử lý TẠI MÁY CHỦ, không gửi cho dịch vụ cloud:
- * - local + engine ensemble (mặc định): CLIP + VLM — chỉ thưởng khi cả hai cùng nhận ra bình/ly cá nhân
- * - local + engine ollama: VLM chạy trên Ollama trong mạng nội bộ (host phải là loopback / mạng riêng). Bị tắt khi production:
- *   đo trên tập ảnh đối kháng, VLM một mình vẫn thưởng nhầm dù đã nhìn lại trên ảnh làm mờ, nên production phải dùng ensemble
- * - local + engine clip: CLIP một mình, CHỈ khi VISION_ALLOW_CLIP_ONLY=true và NODE_ENV khác production: CLIP bị chữ trong ảnh
- *   đánh lừa (F-26) nên không đủ để cấp thưởng. Cấu hình khác → unavailable (503), không tự chuyển sang chế độ khác
+ * Cấu hình nhận diện, đọc lại mỗi lần gọi. Ảnh luôn được xử lý TẠI MÁY CHỦ, trên CPU, không gửi cho dịch vụ nào:
+ * - local + engine classifier (mặc định): bộ phân loại ONNX chạy TRỰC TIẾP trong tiến trình (onnxruntime-node).
+ *   Ngưỡng phải được hiệu chỉnh bằng vision:evaluate trên ảnh có nhãn của trường trước khi mở thưởng thật
  * - simulated: VISION_SIMULATION=true, CHỈ khi NODE_ENV khác production (kết quả được đánh dấu là mô phỏng)
- * - unavailable: VISION_ENGINE=off hoặc cấu hình sai → check-in bị từ chối, không bao giờ tự chấp nhận ảnh
- * evaluating: chỉ để script vision:evaluate đo CLIP một mình; không cấp thưởng gì.
+ * - unavailable: VISION_ENGINE=off, giá trị lạ, tên bộ nhận diện cũ đã gỡ (ensemble/clip/ollama) hoặc mô hình ngoài
+ *   manifest → check-in bị từ chối, không bao giờ tự chấp nhận ảnh, không tự chuyển sang chế độ khác
  */
-export function visionConfig({ evaluating = false } = {}) {
+export function visionConfig() {
   const simulationRequested = envFlag('VISION_SIMULATION');
   const simulationBlocked = simulationRequested && isProduction();
-  const clipOnlyRequested = envFlag('VISION_ALLOW_CLIP_ONLY');
-  const clipOnlyBlocked = clipOnlyRequested && isProduction();
-  const requested = (env('VISION_ENGINE') || 'ensemble').toLowerCase();
+  const requested = (env('VISION_ENGINE') || 'classifier').toLowerCase();
   const engine = ENGINES.includes(requested) ? requested : null;
-  const clip = { model: env('VISION_CLIP_MODEL') || DEFAULT_CLIP_MODEL, dir: modelDir() };
-  const ollama = {
-    url: (env('VISION_OLLAMA_URL') || DEFAULT_OLLAMA_URL).replace(/\/+$/, ''),
-    model: env('VISION_OLLAMA_MODEL') || DEFAULT_OLLAMA_MODEL,
+  const classifier = {
+    model: env('VISION_CLASSIFIER_MODEL') || DEFAULT_CLASSIFIER_MODEL,
+    dir: modelDir(),
+    threads: envNumber('VISION_CLASSIFIER_THREADS', 2, { min: 1, max: 8 }),
   };
 
   let problem = null;
-  if (!engine) problem = requested === 'off' ? 'disabled' : 'invalid_engine';
-  else if (engine === 'clip' && !evaluating && (!clipOnlyRequested || clipOnlyBlocked)) problem = 'clip_only_not_allowed';
-  else if (engine === 'ollama' && !evaluating && isProduction()) problem = 'vlm_only_not_allowed';
-  else if (usesClip(engine) && !MODEL_MANIFEST[clip.model]) problem = 'unknown_model';
-  else if (usesOllama(engine) && !isAllowedOllamaUrl(ollama.url, { trusted: envFlag('VISION_OLLAMA_TRUSTED_HOST') }).ok) {
-    problem = 'ollama_host_not_private';
-  } else if (usesOllama(engine) && isOllamaCloudModel(ollama.model)) problem = 'ollama_cloud_model';
+  if (!engine) problem = requested === 'off' ? 'disabled' : REMOVED_ENGINES.includes(requested) ? 'removed_engine' : 'invalid_engine';
+  else if (!CLASSIFIER_MANIFEST[classifier.model]) problem = 'unknown_classifier_model';
+
+  // Lần nhìn thứ hai (F-26) mặc định đòi ảnh làm mờ đạt cùng ngưỡng; mô hình có thể khai báo mức riêng đã đo trên tập thiết kế
+  const secondLookMin = CLASSIFIER_MANIFEST[classifier.model]?.secondLook?.minConfidence;
 
   return {
     mode: simulationRequested && !simulationBlocked ? 'simulated' : problem ? 'unavailable' : 'local',
     engine,
     problem,
     simulationBlocked,
-    clipOnlyBlocked,
+    secondLookMinConfidence: typeof secondLookMin === 'number' && secondLookMin >= 0 && secondLookMin <= 1 ? secondLookMin : null,
+    // Bước tự kiểm khi nạp (mô hình có selfCheck): enforce = lệch thì không nạp; warn = chỉ ghi lỗi (máy đã được chấm lại)
+    selfCheck: (env('VISION_SELF_CHECK') || '').trim().toLowerCase() === 'warn' ? 'warn' : 'enforce',
     threshold: envNumber('VISION_CONFIDENCE_THRESHOLD', 0.8, { min: 0.5, max: 1 }),
     timeoutMs: envNumber('VISION_TIMEOUT_MS', 20_000, { min: 3_000, max: 120_000 }),
     maxQueue: envNumber('VISION_MAX_QUEUE', 20, { min: 1, max: 500 }),
-    clip,
-    ollama,
+    classifier,
   };
 }
 
 export function logVisionStatus(cfg = visionConfig()) {
   if (cfg.simulationBlocked) {
     console.error('VISION_SIMULATION=true bị BỎ QUA vì NODE_ENV=production — mô phỏng không được dùng thay nhận diện thật.');
-  }
-  if (cfg.clipOnlyBlocked) {
-    console.error('VISION_ALLOW_CLIP_ONLY=true bị BỎ QUA vì NODE_ENV=production — CLIP một mình không được dùng để cấp thưởng.');
   }
   if (cfg.mode === 'simulated') {
     console.warn(
@@ -77,67 +65,57 @@ export function logVisionStatus(cfg = visionConfig()) {
     case 'disabled':
       console.log('VISION_ENGINE=off — check-in bằng ảnh đang tắt.');
       return;
+    case 'removed_engine':
+      console.error(
+        `VISION_ENGINE="${env('VISION_ENGINE')}": CLIP, Ollama và chế độ kết hợp đã bị gỡ khỏi server — check-in bằng ảnh đang tắt. Đặt VISION_ENGINE=classifier (bộ phân loại ONNX chạy trên CPU).`
+      );
+      return;
     case 'invalid_engine':
-      console.error(`VISION_ENGINE="${env('VISION_ENGINE')}" không hợp lệ (chỉ nhận clip, ollama, ensemble, off) — check-in bằng ảnh đang tắt.`);
+      console.error(`VISION_ENGINE="${env('VISION_ENGINE')}" không hợp lệ (chỉ nhận classifier, off) — check-in bằng ảnh đang tắt.`);
       return;
-    case 'clip_only_not_allowed':
+    case 'unknown_classifier_model':
       console.error(
-        'VISION_ENGINE=clip: CLIP một mình bị chữ trong ảnh đánh lừa (F-26) nên check-in bằng ảnh đang tắt. Dùng VISION_ENGINE=ensemble với Ollama trong mạng nội bộ.'
-      );
-      return;
-    case 'vlm_only_not_allowed':
-      console.error('VISION_ENGINE=ollama: VLM một mình cũng bị chữ trong ảnh đánh lừa (F-26) nên check-in bằng ảnh đang tắt khi NODE_ENV=production. Dùng VISION_ENGINE=ensemble.');
-      return;
-    case 'unknown_model':
-      console.error(
-        `VISION_CLIP_MODEL="${cfg.clip.model}" không có trong danh sách mô hình đã ghim (src/data/vision-models.json) — check-in bằng ảnh đang tắt.`
-      );
-      return;
-    case 'ollama_host_not_private':
-      console.error(
-        `VISION_OLLAMA_URL=${cfg.ollama.url} không phải máy trong mạng nội bộ — check-in bị tắt để ảnh không rời máy chủ. Đặt VISION_OLLAMA_TRUSTED_HOST=true nếu máy đó thuộc quyền quản lý của trường.`
-      );
-      return;
-    case 'ollama_cloud_model':
-      console.error(
-        `VISION_OLLAMA_MODEL="${cfg.ollama.model}" là mô hình cloud của Ollama — ảnh sẽ bị chuyển lên ollama.com nên check-in bằng ảnh đang tắt. Dùng mô hình chạy tại máy (vd. qwen3-vl:4b-instruct) và đặt OLLAMA_NO_CLOUD=1 trên máy Ollama.`
+        `VISION_CLASSIFIER_MODEL="${cfg.classifier.model}" không có trong danh sách mô hình đã ghim (src/data/classifier-models.json) — check-in bằng ảnh đang tắt.`
       );
       return;
     default:
   }
-  if (cfg.engine === 'clip') console.warn('VISION_ALLOW_CLIP_ONLY=true — CLIP một mình cấp thưởng và có thể bị chữ trong ảnh đánh lừa. Chỉ dùng khi phát triển.');
-  const parts = [];
-  if (usesClip(cfg.engine)) parts.push(`CLIP (${cfg.clip.model})`);
-  if (usesOllama(cfg.engine)) parts.push(`Ollama ${cfg.ollama.model} tại ${cfg.ollama.url}`);
   console.log(
-    `Nhận diện ảnh tại máy chủ: ${parts.join(' + ')}, ngưỡng ${cfg.threshold} — ảnh không gửi ra ngoài.${cfg.engine === 'ensemble' ? ' Chỉ thưởng khi cả hai bộ cùng nhận ra bình/ly cá nhân.' : ''}`
+    `Nhận diện ảnh tại máy chủ: bộ phân loại ONNX (${cfg.classifier.model}, ${cfg.classifier.threads} luồng CPU), ngưỡng ${cfg.threshold} — ảnh không gửi ra ngoài.`
   );
+  // Mô hình đã hiệu chỉnh ngưỡng trên tập có nhãn (manifest calibratedThreshold): ngưỡng thấp hơn thì số thưởng nhầm đã đo không còn đúng
+  const calibrated = CLASSIFIER_MANIFEST[cfg.classifier.model]?.calibratedThreshold;
+  if (typeof calibrated === 'number' && cfg.threshold < calibrated) {
+    console.warn(
+      `VISION_CONFIDENCE_THRESHOLD=${cfg.threshold} thấp hơn ngưỡng đã hiệu chỉnh cho ${cfg.classifier.model} (${calibrated}): tỉ lệ thưởng nhầm đã đo chỉ đúng từ ngưỡng đó trở lên.`
+    );
+  }
+  // Production mà mô hình chưa hiệu chỉnh trên ảnh có nhãn: check-in vẫn chạy nhưng gần như không thưởng ảnh thật.
+  // Thường do quên đặt VISION_CLASSIFIER_MODEL khi triển khai (mặc định của mã vẫn là mobilenet). Chỉ báo, không chặn
+  if (isProduction() && typeof calibrated !== 'number') {
+    const calibratedModels = Object.keys(CLASSIFIER_MANIFEST).filter((name) => typeof CLASSIFIER_MANIFEST[name].calibratedThreshold === 'number');
+    console.error(
+      `VISION_CLASSIFIER_MODEL=${cfg.classifier.model} chưa được hiệu chỉnh trên ảnh có nhãn (manifest không có calibratedThreshold): tỉ lệ nhận đúng và thưởng nhầm chưa đo; mô hình mặc định ${DEFAULT_CLASSIFIER_MODEL} gần như từ chối mọi ảnh thật. ` +
+        (calibratedModels.length
+          ? `Mô hình đã hiệu chỉnh: ${calibratedModels.join(', ')} (README mục 8.11, Cách 3).`
+          : 'Hiệu chỉnh bằng npm run vision:evaluate trước khi mở thưởng thật.')
+    );
+  }
 }
 
-/** Nạp sẵn mô hình / kiểm tra Ollama khi khởi động để lần check-in đầu không chậm — chỉ ghi log, không chặn server */
-export async function warmUpVision(cfg = visionConfig(), { load = loadClassifier, fetchImpl = fetch } = {}) {
+/** Nạp sẵn mô hình khi khởi động để lần check-in đầu không chậm — chỉ ghi log, không chặn server */
+export async function warmUpVision(cfg = visionConfig(), { loadOnnx = loadClassifier } = {}) {
   if (cfg.mode !== 'local') return;
-  if (usesClip(cfg.engine)) {
-    const started = Date.now();
-    try {
-      await load(cfg);
-      console.log(`Mô hình CLIP đã sẵn sàng (${Date.now() - started} ms).`);
-    } catch (err) {
-      console.error(`Chưa nạp được mô hình CLIP: ${err.message}`);
-    }
-  }
-  if (usesOllama(cfg.engine)) {
-    try {
-      const res = await fetchImpl(`${cfg.ollama.url}/api/tags`, { redirect: 'error', signal: AbortSignal.timeout(5000) });
-      const { models = [] } = await res.json();
-      if (models.some((m) => m.name === cfg.ollama.model || m.model === cfg.ollama.model)) {
-        console.log(`Ollama sẵn sàng: ${cfg.ollama.model}.`);
-      } else {
-        console.error(`Ollama chưa có mô hình ${cfg.ollama.model} — chạy "ollama pull ${cfg.ollama.model}" trên máy chủ Ollama.`);
-      }
-    } catch (err) {
-      console.error(`Không kết nối được Ollama tại ${cfg.ollama.url}: ${err.message}`);
-    }
+  const started = Date.now();
+  try {
+    const loaded = await loadOnnx(cfg);
+    const check = loaded?.selfCheck;
+    const checkNote = check
+      ? `; tự kiểm ${check.images} ảnh chuẩn: lệch lớn nhất ${check.maxDiff ?? 'không đo được'} (cho phép ${check.tolerance})${check.passed ? '' : ' — KHÔNG ĐẠT, xem lỗi [vision-self-check]'}`
+      : '';
+    console.log(`Bộ phân loại ONNX đã sẵn sàng (${Date.now() - started} ms)${checkNote}.`);
+  } catch (err) {
+    console.error(`Chưa nạp được bộ phân loại ONNX: ${err.message}`);
   }
 }
 
@@ -146,7 +124,7 @@ const FAILURE_REASONS = {
   busy: 'Máy chủ đang bận nhận diện nhiều ảnh. Ảnh chưa được chấm — vui lòng thử lại sau ít phút.',
   timeout: 'Nhận diện ảnh mất quá nhiều thời gian. Ảnh chưa được chấm — vui lòng thử lại.',
   invalid_image: 'Máy chủ không đọc được nội dung ảnh. Hãy chụp lại hoặc chọn ảnh JPEG/PNG khác.',
-  invalid_response: 'Bộ nhận diện trả về kết quả không hợp lệ nên ảnh chưa được chấm. Vui lòng thử lại.',
+  invalid_response: 'Bộ nhận diện ảnh trên máy chủ trả kết quả không hợp lệ. Ảnh chưa được chấm — vui lòng thử lại sau ít phút.',
   provider_error: 'Bộ nhận diện ảnh trên máy chủ đang gặp lỗi. Ảnh chưa được chấm — vui lòng thử lại sau ít phút.',
 };
 
@@ -173,49 +151,11 @@ function withDecision(result, cfg) {
   return { ...result, accepted: isRewardable(result, cfg.threshold) };
 }
 
-const percent = (value) => `${Math.round(value * 100)}%`;
-
 /**
- * Kết hợp CLIP + VLM: cả hai cùng là bình/ly cá nhân → loại theo VLM, độ tin cậy lấy giá trị THẤP hơn; cùng một loại
- * khác → giữ loại đó; khác loại → "unclear" (không thưởng). Một bộ lỗi → không thưởng, không tự hạ xuống một bộ.
- */
-async function classifyEnsemble(image, cfg, engines) {
-  const [clip, vlm] = await Promise.allSettled([engines.clip(image, cfg), engines.ollama(image, cfg)]);
-  const fallbackModel = `ensemble:clip:${cfg.clip.model}+ollama:${cfg.ollama.model}`;
-  for (const settled of [clip, vlm]) {
-    if (settled.status === 'rejected') return engineFailure(settled.reason, fallbackModel);
-  }
-  const a = clip.value;
-  const b = vlm.value;
-  const base = {
-    status: 'classified',
-    confidence: Math.min(a.confidence, b.confidence),
-    model: `ensemble:${a.model}+${b.model}`,
-    engines: [
-      { engine: 'clip', category: a.category, confidence: a.confidence, model: a.model },
-      { engine: 'ollama', category: b.category, confidence: b.confidence, model: b.model },
-    ],
-  };
-  if (REWARDABLE_CATEGORIES.has(a.category) && REWARDABLE_CATEGORIES.has(b.category)) {
-    const reason = `${b.reason} (CLIP: ${CATEGORY_LABELS[a.category].toLowerCase()} ${percent(a.confidence)})`;
-    return withDecision({ ...base, category: b.category, reason }, cfg);
-  }
-  if (a.category === b.category) return withDecision({ ...base, category: b.category, reason: b.reason }, cfg);
-  return withDecision(
-    {
-      ...base,
-      category: 'unclear',
-      disagreement: true,
-      reason: `Hai bộ nhận diện tại máy chủ chưa thống nhất: CLIP «${CATEGORY_LABELS[a.category]}» ${percent(a.confidence)}, VLM «${CATEGORY_LABELS[b.category]}» ${percent(b.confidence)}.`,
-    },
-    cfg
-  );
-}
-
-/**
- * Lần nhìn thứ hai (F-26): ảnh sắp được thưởng phải vẫn được nhận ra là bình/ly cá nhân khi chữ trong ảnh đã bị làm mờ, nên kết luận
- * không thể chỉ dựa vào chữ. CLIP chỉ cần giữ loại đứng đầu vì ảnh mờ luôn làm điểm CLIP tụt (đo được 0,33–0,68 trên bình thật có nhãn);
- * VLM phải đạt ngưỡng như lần đầu. Một bộ lỗi → không thưởng, không coi như đạt.
+ * Lần nhìn thứ hai (F-26): ảnh sắp được thưởng phải vẫn được nhận ra là bình/ly cá nhân VÀ đạt ngưỡng như lần đầu khi chữ
+ * trong ảnh đã bị làm mờ, nên kết luận không thể chỉ dựa vào chữ. Mô hình khai báo secondLook.minConfidence trong manifest thì ảnh
+ * mờ chỉ cần đạt mức đó (mô hình học trên ảnh chụp mất độ tin cậy trên ảnh mờ dù vật chứa vẫn rõ); kết luận đổi sang loại không
+ * được thưởng thì vẫn bị chặn. Bộ phân loại lỗi ở lần hai → không thưởng, không coi như đạt.
  */
 async function confirmWithoutText(image, result, cfg, engines, blur) {
   let blurred;
@@ -224,30 +164,30 @@ async function confirmWithoutText(image, result, cfg, engines, blur) {
   } catch (err) {
     return engineFailure(new VisionEngineError('invalid_image', err?.message), result.model);
   }
-  const names = cfg.engine === 'ensemble' ? ['clip', 'ollama'] : ['ollama'];
-  const looks = await Promise.allSettled(names.map((name) => engines[name](blurred, cfg)));
-  const failed = looks.find((look) => look.status === 'rejected');
-  if (failed) return engineFailure(failed.reason, result.model);
-
-  const secondLook = names.map((engine, i) => ({ engine, category: looks[i].value.category, confidence: looks[i].value.confidence }));
-  const stable = secondLook.every(({ engine, category, confidence }) => REWARDABLE_CATEGORIES.has(category) && (engine === 'clip' || confidence >= cfg.threshold));
-  if (stable) return { ...result, secondLook };
+  let look;
+  try {
+    look = await engines.classifier(blurred, cfg);
+  } catch (err) {
+    return engineFailure(err, result.model);
+  }
+  const secondLook = [{ engine: 'classifier', category: look.category, confidence: look.confidence }];
+  const needed = cfg.secondLookMinConfidence ?? cfg.threshold;
+  if (REWARDABLE_CATEGORIES.has(look.category) && look.confidence >= needed) return { ...result, secondLook };
   return {
     ...result,
     category: 'unclear',
     accepted: false,
     textDependent: true,
     secondLook,
-    reason: `Kết luận thay đổi khi chữ trong ảnh được làm mờ: ${secondLook.map(({ engine, category }) => `${engine === 'clip' ? 'CLIP' : 'VLM'} «${CATEGORY_LABELS[category]}»`).join(', ')}.`,
+    reason: `Kết luận thay đổi khi chữ trong ảnh được làm mờ: bộ phân loại «${CATEGORY_LABELS[look.category]}».`,
   };
 }
 
 async function firstLook(image, cfg, engines) {
-  if (cfg.engine === 'ensemble') return classifyEnsemble(image, cfg, engines);
   try {
-    return withDecision({ status: 'classified', ...(await engines[cfg.engine](image, cfg)) }, cfg);
+    return withDecision({ status: 'classified', ...(await engines.classifier(image, cfg)) }, cfg);
   } catch (err) {
-    return engineFailure(err, cfg.engine === 'clip' ? `clip:${cfg.clip.model}` : `ollama:${cfg.ollama.model}`);
+    return engineFailure(err, `classifier:${cfg.classifier.model}`);
   }
 }
 
@@ -255,14 +195,13 @@ async function firstLook(image, cfg, engines) {
  * Phân loại ảnh vật chứa đồ uống tại máy chủ. Kết quả luôn có dạng
  * { status, category, confidence, reason, model, accepted } — status:
  * classified | simulated | not_configured | busy | timeout | invalid_image | invalid_response | provider_error
- * (chế độ ensemble thêm `engines` và `disagreement`; ảnh qua lần nhìn thứ hai thêm `secondLook`, kết luận đổi thì có `textDependent`)
+ * (ảnh qua lần nhìn thứ hai thêm `secondLook`, kết luận đổi thì có `textDependent`)
  */
-export async function classifyContainerImage(image, cfg = visionConfig(), engines = { clip: classifyWithClip, ollama: classifyWithOllama }, blur = suppressText) {
+export async function classifyContainerImage(image, cfg = visionConfig(), engines = { classifier: classifyWithClassifier }, blur = suppressText) {
   if (cfg.mode === 'simulated') return withDecision(simulate(), cfg);
   if (cfg.mode !== 'local') return failure('not_configured', null);
   const result = await firstLook(image, cfg, engines);
-  // CLIP một mình chỉ có ở chế độ phát triển, không cấp thưởng thật nên không cần nhìn lại
-  return result.accepted && usesOllama(cfg.engine) ? confirmWithoutText(image, result, cfg, engines, blur) : result;
+  return result.accepted ? confirmWithoutText(image, result, cfg, engines, blur) : result;
 }
 
 /** Chế độ mô phỏng: kết quả CỐ ĐỊNH theo cấu hình, không dựa trên nội dung ảnh, hash hay ngẫu nhiên */

@@ -1,5 +1,5 @@
 import { User } from '../models/User.js';
-import { writeAudit } from '../services/audit.js';
+import { beginAudit, finishAudit, writeAudit } from '../services/audit.js';
 import { toAdminError } from '../services/adminErrors.js';
 import { adminReauthWindowMs, isAdminConfigured } from '../services/adminConfig.js';
 import { adminCsrfToken, loadAdminSession, revokeAdminSessions, touchAdminSession } from '../services/adminSession.js';
@@ -116,19 +116,30 @@ export function adminRead(handler) {
 const auditResult = (status) => (status === 403 || status === 409 ? 'denied' : 'failure');
 
 /**
- * Route ghi dữ liệu: luôn ghi nhật ký kiểm toán, cả khi thành công lẫn thất bại, trước khi trả phản hồi.
+ * Route ghi dữ liệu: ghi dấu vết kiểm toán TRƯỚC khi chạy (SEC-07); không ghi được thì trả 503 và không chạy thao tác. Xong thao tác
+ * (thành công hay thất bại) thì dấu vết thành dòng nhật ký có kết quả, trước khi trả phản hồi.
  * handler(req, ctx) đặt ctx.target (đối tượng) và ctx.meta (chi tiết, đã được lọc bí mật), ctx.status nếu khác 200.
  */
 export function adminAction(action, handler) {
   return async (req, res) => {
     const ctx = { status: 200, target: null, meta: null };
+    let intent;
+    try {
+      intent = await beginAudit(req, action);
+    } catch (err) {
+      console.error(`[audit-write-failed] ${action} (trước thao tác): ${err.name}`);
+      return res.status(503).json({
+        error: 'Chưa ghi được nhật ký kiểm toán nên thao tác chưa được thực hiện. Vui lòng thử lại sau.',
+        code: 'audit_unavailable',
+      });
+    }
     try {
       const body = await handler(req, ctx);
-      await writeAudit(req, { action, target: ctx.target, meta: ctx.meta });
+      await finishAudit(req, intent, { result: 'success', target: ctx.target, meta: ctx.meta });
       res.status(ctx.status).json(body);
     } catch (err) {
       const known = toAdminError(err);
-      await writeAudit(req, { action, result: auditResult(known.status), reason: known.code, target: ctx.target, meta: ctx.meta });
+      await finishAudit(req, intent, { result: auditResult(known.status), reason: known.code, target: ctx.target, meta: ctx.meta });
       sendAdminError(res, known);
     }
   };

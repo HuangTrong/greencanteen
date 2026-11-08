@@ -51,7 +51,8 @@ test('migrate bổ sung role/status, giữ nguyên mọi dữ liệu, không ghi
   const legacy = await insertLegacyUser();
   const adminId = await insertLegacyUser({ role: 'admin', status: 'locked' });
   const applied = await runMigrations();
-  assert.deepEqual(applied, ['2026-10-user-role-status']);
+  // Từ 2026-11-07 còn migration 2026-11-gacha-keychain chạy cùng lượt: chỉ kiểm migration của test này
+  assert.ok(applied.includes('2026-10-user-role-status'), JSON.stringify(applied));
 
   const doc = await User.collection.findOne({ _id: legacy });
   assert.equal(doc.role, 'user');
@@ -68,8 +69,10 @@ test('migrate bổ sung role/status, giữ nguyên mọi dữ liệu, không ghi
 test('nhiều tiến trình migrate cùng lúc không lỗi', async () => {
   await SystemMarker.collection.deleteMany({});
   const results = await Promise.all([runMigrations(), runMigrations(), runMigrations()]);
-  assert.ok(results.flat().length >= 1);
-  assert.equal(await SystemMarker.countDocuments(), 1);
+  const applied = new Set(results.flat());
+  assert.ok(applied.size >= 1);
+  // Mỗi migration đúng một dấu mốc, dù nhiều tiến trình cùng chạy
+  assert.equal(await SystemMarker.countDocuments(), applied.size);
 });
 
 test('tài khoản cũ hiển thị đúng trong khu quản trị khi chưa migrate', async () => {

@@ -11,6 +11,8 @@ import { RateLimit } from '../../src/models/RateLimit.js';
 import { uploadDir } from '../../src/routes/checkin.js';
 import { syncStories } from '../../src/services/stories.js';
 import { hashToken } from '../../src/services/session.js';
+import { blockNonLoopbackEgress } from '../egressGuard.js';
+import { ADMIN_ENV } from '../adminHelpers.js';
 import {
   createClient,
   imageForm,
@@ -29,6 +31,7 @@ const DEFAULT_REGISTER_IP_MAX = 100;
 
 let ctx;
 let outboundCalls;
+let egress;
 const client = () => createClient(ctx.base);
 const setCookies = (res) => res.headers.getSetCookie();
 
@@ -44,8 +47,11 @@ before(async () => {
     outboundCalls.push(href);
     throw new Error(`Chặn request ra ngoài trong test: ${href}`);
   };
+  // Lớp chặn thứ hai ở tầng socket + DNS: bắt cả kết nối không đi qua fetch (SMTP, clamd, http)
+  egress = blockNonLoopbackEgress();
 });
 after(async () => {
+  egress?.restore();
   globalThis.fetch = realFetch;
   await ctx.stop();
 });
@@ -440,5 +446,29 @@ describe('Upload ảnh — tên tệp, loại nội dung, tệp đa định dạ
     const res = await c.post('/api/checkin', { form: imageForm(polyglot) });
     assert.equal(res.status, 200, 'không có quét mã độc — xem F-12');
     assert.ok(!JSON.stringify(res.data).includes('<script>'));
+  });
+});
+
+// SEC-03 (2026-11-07): khóa bộ đếm giới hạn từng chứa nguyên email (và cặp email|IP) của mọi lượt thử, kể cả email gõ nhầm hay không
+// có tài khoản; bản sao lưu DB giữ lại các khóa đó. Các bộ đếm khác đã băm email từ trước
+describe('A02 Cryptographic Failures — bộ đếm giới hạn không lưu email dạng rõ', () => {
+  test('đăng nhập sai, quên mật khẩu, đăng nhập quản trị sai: không khóa nào trong ratelimits chứa email', async () => {
+    setEnv({ ...ADMIN_ENV, EMAIL_TRANSPORT: 'console' });
+    const email = `khoadem${uniqueSuffix()}@example.edu.vn`;
+    assert.equal((await client().post('/api/auth/login', { json: { email, password: 'sai-mat-khau-1' } })).status, 401);
+    assert.equal((await client().post('/api/auth/password/forgot', { json: { email } })).status, 202);
+    assert.equal((await client().post('/api/admin/auth/login', { json: { email, password: 'sai-mat-khau-1' } })).status, 401);
+    const keys = (await RateLimit.find({}).lean()).map((doc) => doc.key);
+    for (const prefix of ['login-fail:', 'reset-request-email:', 'admin-login-email:', 'admin-login-pair:']) {
+      assert.ok(keys.some((key) => key.startsWith(prefix)), `có bộ đếm ${prefix}`);
+    }
+    assert.deepEqual(keys.filter((key) => key.includes(email.split('@')[0])), [], 'không khóa nào chứa email');
+  });
+});
+
+// Chạy sau cùng trong tệp: mọi tình huống ở trên không được mở kết nối nào rời máy, kể cả kết nối không qua fetch
+describe('A10 / chặn mạng ngoài ở tầng socket', () => {
+  test('cả tệp không có kết nối TCP hay truy vấn DNS nào tới máy ngoài loopback', () => {
+    assert.deepEqual(egress.attempts, []);
   });
 });

@@ -5,6 +5,8 @@ import assert from 'node:assert/strict';
 import { User } from '../../src/models/User.js';
 import { CheckIn } from '../../src/models/CheckIn.js';
 import { GachaReward } from '../../src/models/GachaReward.js';
+import { GachaConfig } from '../../src/models/GachaConfig.js';
+import { publishKeychainConfig } from '../gachaHelpers.js';
 import { QrLogin } from '../../src/models/QrLogin.js';
 import { RateLimit } from '../../src/models/RateLimit.js';
 import { Session } from '../../src/models/Session.js';
@@ -60,12 +62,14 @@ describe('API gặp lỗi DB trả 500 JSON thống nhất', () => {
     ['GET /api/auth/me (xác thực phiên)', Session, 'findOne', failing, () => account.c.get('/api/auth/me')],
     ['GET /api/checkin/history', CheckIn, 'find', failingQuery, () => account.c.get('/api/checkin/history')],
     ['GET /api/gacha/rewards', GachaReward, 'find', failingQuery, () => account.c.get('/api/gacha/rewards')],
-    ['POST /api/gacha/spin', User, 'findOneAndUpdate', failing, async () => {
-      // Gacha checks the in-memory session user's spin count before querying MongoDB.
-      // Give this account a spin so the test reaches the database operation being stubbed.
+    ['GET /api/gacha/results', GachaReward, 'find', failingQuery, () => account.c.get('/api/gacha/results')],
+    ['POST /api/gacha/draw', User, 'findOneAndUpdate', failing, async () => {
+      // Quay thưởng kiểm tra số lượt của phiên trong bộ nhớ trước khi gọi MongoDB và cần một phiên bản móc khóa đang hiệu lực:
+      // cấp một lượt và một cấu hình để yêu cầu đi tới đúng lệnh ghi đang bị giả lỗi
       await User.updateOne({ _id: account.id }, { $set: { pendingGachaSpins: 1 } });
+      if (!(await GachaConfig.exists({ status: 'published' }))) await publishKeychainConfig();
       try {
-        return await account.c.post('/api/gacha/spin');
+        return await account.c.post('/api/gacha/draw');
       } finally {
         await User.updateOne({ _id: account.id }, { $set: { pendingGachaSpins: 0 } });
       }

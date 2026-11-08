@@ -1,43 +1,60 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { adminApi } from '../adminApi';
-import { CONFIG_STATUS_LABELS, formatDateTime, formatNumber, formatVnd, isoToLocalInput, localInputToIso, percentToPpm, ppmToPercent } from '../format';
+import {
+  CONFIG_STATUS_LABELS,
+  formatDateTime,
+  formatNumber,
+  formatVnd,
+  isoToLocalInput,
+  localInputToIso,
+  oddsText,
+  percentToPpm,
+  ppmToPercent,
+} from '../format';
+import { GachaTabs, MediaImage } from '../gacha';
 import { useReauth } from '../session';
 import { Badge, Button, Card, ConfirmDialog, ErrorState, LoadingState, PageHeader, TableFrame, Td, TextArea, TextField, Th, inputClass, useLoad, useNotice } from '../ui';
 
 const TOTAL_PPM = 1_000_000;
 
 function toForm(config) {
+  const keychains = config.prizes.filter((prize) => !prize.legacy);
   return {
-    prizes: config.prizes.map((prize) => ({
-      ...prize,
-      amountText: String(prize.amountVnd),
+    prizes: keychains.map((prize) => ({
+      prizeId: prize.prizeId,
+      label: prize.label,
+      description: prize.description || '',
+      imageId: prize.imageId || '',
+      enabled: prize.enabled,
       percentText: ppmToPercent(prize.probabilityPpm),
-      limitText: prize.maxQuantity === null ? '' : String(prize.maxQuantity),
+      quantityText: prize.maxQuantity === null ? '' : String(prize.maxQuantity),
     })),
-    budgetText: config.budgetVnd === null ? '' : String(config.budgetVnd),
+    // Bản nháp tạo trước khi đổi sang móc khóa có thể còn dòng mã nạp: không sửa được, bị bỏ khi lưu
+    droppedLegacy: config.prizes.length - keychains.length,
+    claimInstructions: config.claimInstructions || '',
     effectiveFrom: isoToLocalInput(config.effectiveFrom),
     effectiveTo: isoToLocalInput(config.effectiveTo),
     note: config.note,
   };
 }
 
-// Ô trống hoặc sai định dạng được gửi nguyên để server báo lỗi đúng trường, không tự sửa số tiền hay xác suất
+// Ô trống hoặc sai định dạng được gửi nguyên để server báo lỗi đúng trường, không tự sửa số lượng hay xác suất
 const toInteger = (text) => (/^\d+$/.test(text.trim()) ? Number(text.trim()) : text.trim());
 
 function toPayload(form, revision) {
   return {
     revision,
-    prizes: form.prizes.map(({ prizeId, label, carrier, enabled, amountText, percentText, limitText }) => ({
+    prizes: form.prizes.map(({ prizeId, label, description, imageId, enabled, percentText, quantityText }) => ({
       prizeId,
       label,
-      carrier,
+      description,
+      imageId,
       enabled,
-      amountVnd: toInteger(amountText),
       probabilityPpm: percentToPpm(percentText) ?? percentText,
-      maxQuantity: limitText.trim() === '' ? null : toInteger(limitText),
+      maxQuantity: toInteger(quantityText),
     })),
-    budgetVnd: form.budgetText.trim() === '' ? null : toInteger(form.budgetText),
+    claimInstructions: form.claimInstructions,
     effectiveFrom: localInputToIso(form.effectiveFrom),
     effectiveTo: localInputToIso(form.effectiveTo),
     note: form.note,
@@ -49,13 +66,19 @@ function ProbabilityTotal({ prizes }) {
     () => prizes.reduce((sum, prize) => (prize.enabled ? sum + (percentToPpm(prize.percentText) ?? 0) : sum), 0),
     [prizes]
   );
-  const ok = total === TOTAL_PPM;
+  const over = total > TOTAL_PPM;
+  const warn = over || total === 0;
   return (
-    <p role="status" className={`rounded-lg px-3 py-2 text-sm font-bold ${ok ? 'bg-leaf-100 text-leaf-900' : 'bg-amber-100 text-amber-900'}`}>
-      Tổng xác suất các giải đang bật: {ppmToPercent(total)}%{ok ? ' — hợp lệ' : ' — phải bằng đúng 100% mới xuất bản được'}
+    <p role="status" className={`rounded-lg px-3 py-2 text-sm font-bold ${warn ? 'bg-amber-100 text-amber-900' : 'bg-leaf-100 text-leaf-900'}`}>
+      Tổng xác suất trúng của các mẫu đang bật: {ppmToPercent(total)}% ({oddsText(total)}). Không trúng:{' '}
+      {over ? '—' : `${ppmToPercent(TOTAL_PPM - total)}%`}
+      {over && '. Vượt 100% nên chưa xuất bản được.'}
+      {total === 0 && '. Chưa mẫu nào có cơ hội trúng.'}
     </p>
   );
 }
+
+const FieldError = ({ children }) => (children ? <p className="max-w-56 text-xs font-semibold text-red-700">{children}</p> : null);
 
 function DraftEditor({ config, onSaved, onChanged }) {
   const navigate = useNavigate();
@@ -67,6 +90,10 @@ function DraftEditor({ config, onSaved, onChanged }) {
   const [busy, setBusy] = useState(false);
   const [confirmPublish, setConfirmPublish] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const { data: library, reload: reloadLibrary, error: libraryError } = useLoad(() => adminApi.gachaMedia({ kind: 'keychain' }), []);
+  const images = library?.items || [];
+  const imageById = new Map(images.map((image) => [image.id, image]));
+  const used = new Map((config.usage || []).map((row) => [row.prizeId, row.used]));
 
   const setPrize = (index, patch) =>
     setForm((current) => ({ ...current, prizes: current.prizes.map((prize, i) => (i === index ? { ...prize, ...patch } : prize)) }));
@@ -76,9 +103,10 @@ function DraftEditor({ config, onSaved, onChanged }) {
       ...current,
       prizes: [
         ...current.prizes,
-        { prizeId: `giai-${Date.now().toString(36)}`, label: 'Mã nạp điện thoại', carrier: '', enabled: true, amountText: '', percentText: '0', limitText: '' },
+        { prizeId: `moc-khoa-${Date.now().toString(36)}`, label: '', description: '', imageId: '', enabled: true, percentText: '0', quantityText: '' },
       ],
     }));
+  const setField = (key) => (event) => setForm((current) => ({ ...current, [key]: event.target.value }));
 
   const save = async () => {
     setFields({});
@@ -129,59 +157,126 @@ function DraftEditor({ config, onSaved, onChanged }) {
           onSave();
         }}
       >
-        <Card title="Danh mục giải">
-          <TableFrame label="Danh mục giải của bản nháp">
+        <Card title="Mẫu móc khóa">
+          {form.droppedLegacy > 0 && (
+            <p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              Bản nháp này có {form.droppedLegacy} giải mã nạp điện thoại cũ. Mã nạp không còn được phát nên các dòng đó sẽ bị bỏ khi lưu.
+            </p>
+          )}
+          <p className="mb-3 text-xs text-stone-600">
+            Xác suất là cơ hội trúng của mỗi lượt quay, tối đa 4 chữ số thập phân (nhỏ nhất 0,0001% = 1 trên 1.000.000 lượt). Số lượng là
+            tổng số móc khóa thật của mẫu, tính cả số đã trúng ở các phiên bản trước; muốn thêm mẫu mới thì thêm dòng mới thay vì đổi ảnh
+            của dòng cũ. Ảnh lấy từ{' '}
+            <Link to="/gacha/media" target="_blank" className="font-semibold text-leaf-800 underline underline-offset-2">
+              thư viện ảnh (mở thẻ mới)
+            </Link>
+            .{' '}
+            <button type="button" onClick={reloadLibrary} className="font-semibold text-leaf-800 underline underline-offset-2">
+              Tải lại danh sách ảnh
+            </button>
+          </p>
+          {libraryError && <p className="mb-3 text-sm font-semibold text-red-700">Không tải được thư viện ảnh: {libraryError}</p>}
+          <TableFrame label="Mẫu móc khóa của bản nháp">
             <thead>
               <tr>
                 <Th>Bật</Th>
-                <Th>Tên giải</Th>
-                <Th>Nhà mạng</Th>
-                <Th>Mệnh giá (VND)</Th>
-                <Th>Xác suất (%)</Th>
-                <Th>Giới hạn kho</Th>
+                <Th>Ảnh</Th>
+                <Th>Tên và mô tả</Th>
+                <Th>Xác suất trúng (%)</Th>
+                <Th>Tổng số lượng</Th>
                 <Th>
                   <span className="sr-only">Xóa dòng</span>
                 </Th>
               </tr>
             </thead>
             <tbody>
-              {form.prizes.map((prize, index) => (
-                <tr key={prize.prizeId}>
-                  <Td>
-                    <input type="checkbox" aria-label={`Bật giải ${index + 1}`} checked={prize.enabled} onChange={(e) => setPrize(index, { enabled: e.target.checked })} />
-                  </Td>
-                  <Td>
-                    <input aria-label={`Tên giải ${index + 1}`} className={`${inputClass} w-44`} maxLength={80} value={prize.label} onChange={(e) => setPrize(index, { label: e.target.value })} />
-                    {inlineError(index, 'label') && <p className="text-xs font-semibold text-red-700">{inlineError(index, 'label')}</p>}
-                  </Td>
-                  <Td>
-                    <input aria-label={`Nhà mạng giải ${index + 1}`} className={`${inputClass} w-32`} maxLength={40} value={prize.carrier} onChange={(e) => setPrize(index, { carrier: e.target.value })} />
-                    {inlineError(index, 'carrier') && <p className="text-xs font-semibold text-red-700">{inlineError(index, 'carrier')}</p>}
-                  </Td>
-                  <Td>
-                    <input aria-label={`Mệnh giá giải ${index + 1}`} className={`${inputClass} w-28`} inputMode="numeric" value={prize.amountText} onChange={(e) => setPrize(index, { amountText: e.target.value })} />
-                    {inlineError(index, 'amountVnd') && <p className="max-w-40 text-xs font-semibold text-red-700">{inlineError(index, 'amountVnd')}</p>}
-                  </Td>
-                  <Td>
-                    <input aria-label={`Xác suất giải ${index + 1}`} className={`${inputClass} w-24`} inputMode="decimal" value={prize.percentText} onChange={(e) => setPrize(index, { percentText: e.target.value })} />
-                    {inlineError(index, 'probabilityPpm') && <p className="max-w-40 text-xs font-semibold text-red-700">{inlineError(index, 'probabilityPpm')}</p>}
-                  </Td>
-                  <Td>
-                    <input aria-label={`Giới hạn kho giải ${index + 1}`} placeholder="Không giới hạn" className={`${inputClass} w-32`} inputMode="numeric" value={prize.limitText} onChange={(e) => setPrize(index, { limitText: e.target.value })} />
-                    {inlineError(index, 'maxQuantity') && <p className="max-w-40 text-xs font-semibold text-red-700">{inlineError(index, 'maxQuantity')}</p>}
-                  </Td>
-                  <Td>
-                    <Button tone="dangerOutline" className="px-2 py-1" aria-label={`Xóa giải ${index + 1}`} onClick={() => removePrize(index)}>
-                      Xóa
-                    </Button>
-                  </Td>
-                </tr>
-              ))}
+              {form.prizes.map((prize, index) => {
+                const image = imageById.get(prize.imageId);
+                const ppm = percentToPpm(prize.percentText);
+                const usedCount = used.get(prize.prizeId) || 0;
+                return (
+                  <tr key={prize.prizeId}>
+                    <Td>
+                      <input type="checkbox" aria-label={`Bật mẫu ${index + 1}`} checked={prize.enabled} onChange={(e) => setPrize(index, { enabled: e.target.checked })} />
+                    </Td>
+                    <Td>
+                      <div className="flex w-52 items-start gap-2">
+                        <MediaImage url={image?.url} alt={image ? `Ảnh ${image.name}` : ''} className="h-14 w-14 shrink-0" />
+                        <select
+                          aria-label={`Ảnh móc khóa mẫu ${index + 1}`}
+                          className={`${inputClass} min-w-0`}
+                          value={prize.imageId}
+                          onChange={(e) => setPrize(index, { imageId: e.target.value })}
+                        >
+                          <option value="">Chọn ảnh</option>
+                          {prize.imageId && !image && library && <option value={prize.imageId}>(ảnh không còn trong thư viện)</option>}
+                          {images.map((item) => (
+                            <option key={item.id} value={item.id}>
+                              {item.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <FieldError>{inlineError(index, 'imageId')}</FieldError>
+                    </Td>
+                    <Td>
+                      <div className="w-60 space-y-1">
+                        <input
+                          aria-label={`Tên móc khóa mẫu ${index + 1}`}
+                          placeholder="Tên móc khóa"
+                          className={inputClass}
+                          maxLength={80}
+                          value={prize.label}
+                          onChange={(e) => setPrize(index, { label: e.target.value })}
+                        />
+                        <FieldError>{inlineError(index, 'label')}</FieldError>
+                        <textarea
+                          aria-label={`Mô tả mẫu ${index + 1}`}
+                          placeholder="Mô tả ngắn (không bắt buộc)"
+                          rows={2}
+                          className={inputClass}
+                          maxLength={300}
+                          value={prize.description}
+                          onChange={(e) => setPrize(index, { description: e.target.value })}
+                        />
+                        <FieldError>{inlineError(index, 'description')}</FieldError>
+                      </div>
+                    </Td>
+                    <Td>
+                      <input
+                        aria-label={`Xác suất trúng mẫu ${index + 1}`}
+                        className={`${inputClass} w-28`}
+                        inputMode="decimal"
+                        value={prize.percentText}
+                        onChange={(e) => setPrize(index, { percentText: e.target.value })}
+                      />
+                      <p className="mt-1 text-xs text-stone-500">{ppm === null ? 'Sai định dạng' : oddsText(ppm)}</p>
+                      <FieldError>{inlineError(index, 'probabilityPpm')}</FieldError>
+                    </Td>
+                    <Td>
+                      <input
+                        aria-label={`Tổng số lượng mẫu ${index + 1}`}
+                        className={`${inputClass} w-28`}
+                        inputMode="numeric"
+                        value={prize.quantityText}
+                        onChange={(e) => setPrize(index, { quantityText: e.target.value })}
+                      />
+                      <p className="mt-1 text-xs text-stone-500">Đã trúng: {formatNumber(usedCount)}</p>
+                      <FieldError>{inlineError(index, 'maxQuantity')}</FieldError>
+                    </Td>
+                    <Td>
+                      <Button tone="dangerOutline" className="px-2 py-1" aria-label={`Xóa mẫu ${index + 1}`} onClick={() => removePrize(index)}>
+                        Xóa
+                      </Button>
+                    </Td>
+                  </tr>
+                );
+              })}
             </tbody>
           </TableFrame>
           <div className="mt-3 space-y-3">
             <Button tone="secondary" onClick={addPrize}>
-              Thêm giải
+              Thêm mẫu móc khóa
             </Button>
             <ProbabilityTotal prizes={form.prizes} />
             {fields.prizes && <p className="text-sm font-semibold text-red-700">{fields.prizes}</p>}
@@ -189,14 +284,14 @@ function DraftEditor({ config, onSaved, onChanged }) {
           </div>
         </Card>
 
-        <Card title="Hiệu lực và giới hạn">
-          <div className="grid gap-3 md:grid-cols-3">
+        <Card title="Hiệu lực và nhận quà">
+          <div className="grid gap-3 md:grid-cols-2">
             <TextField
               label="Hiệu lực từ (giờ Việt Nam)"
               hint="Để trống: áp dụng ngay khi xuất bản."
               type="datetime-local"
               value={form.effectiveFrom}
-              onChange={(e) => setForm((current) => ({ ...current, effectiveFrom: e.target.value }))}
+              onChange={setField('effectiveFrom')}
               error={fields.effectiveFrom}
             />
             <TextField
@@ -204,20 +299,20 @@ function DraftEditor({ config, onSaved, onChanged }) {
               hint="Để trống: không tự kết thúc."
               type="datetime-local"
               value={form.effectiveTo}
-              onChange={(e) => setForm((current) => ({ ...current, effectiveTo: e.target.value }))}
+              onChange={setField('effectiveTo')}
               error={fields.effectiveTo}
             />
-            <TextField
-              label="Ngân sách tối đa (VND)"
-              hint="Tổng mệnh giá được phát. Để trống: không giới hạn."
-              inputMode="numeric"
-              value={form.budgetText}
-              onChange={(e) => setForm((current) => ({ ...current, budgetText: e.target.value }))}
-              error={fields.budgetVnd}
-            />
           </div>
-          <div className="mt-3">
-            <TextArea label="Ghi chú" maxLength={500} value={form.note} onChange={(e) => setForm((current) => ({ ...current, note: e.target.value }))} error={fields.note} />
+          <div className="mt-3 space-y-3">
+            <TextArea
+              label="Hướng dẫn nhận quà"
+              hint="Nơi nhận, giờ nhận, cần mang gì (mã nhận quà, thẻ sinh viên), hạn nhận. Hiện cho người trúng và trên trang thể lệ."
+              maxLength={500}
+              value={form.claimInstructions}
+              onChange={setField('claimInstructions')}
+              error={fields.claimInstructions}
+            />
+            <TextArea label="Ghi chú nội bộ" hint="Không hiện cho sinh viên." maxLength={500} value={form.note} onChange={setField('note')} error={fields.note} />
           </div>
         </Card>
 
@@ -244,7 +339,7 @@ function DraftEditor({ config, onSaved, onChanged }) {
       {confirmPublish && (
         <ConfirmDialog
           title={`Xuất bản phiên bản ${config.version}`}
-          description="Sau khi xuất bản, danh mục giải của phiên bản này không sửa được nữa. Thao tác cần xác thực lại."
+          description="Sau khi xuất bản, mẫu móc khóa, xác suất và hướng dẫn nhận quà của phiên bản này không sửa được nữa; trang thể lệ công khai cập nhật ngay. Thao tác cần xác thực lại."
           confirmLabel="Xuất bản"
           tone="primary"
           onConfirm={publish}
@@ -268,13 +363,92 @@ function DraftEditor({ config, onSaved, onChanged }) {
   );
 }
 
+function KeychainTable({ config }) {
+  const wonHere = new Map(config.issued.map((row) => [row.prizeId, row.count]));
+  const used = new Map((config.usage || []).map((row) => [row.prizeId, row.used]));
+  return (
+    <TableFrame label="Mẫu móc khóa của phiên bản đã xuất bản">
+      <thead>
+        <tr>
+          <Th>Ảnh</Th>
+          <Th>Mẫu móc khóa</Th>
+          <Th className="text-right">Xác suất trúng</Th>
+          <Th>Trạng thái</Th>
+          <Th className="text-right">Trúng ở phiên bản này</Th>
+          <Th className="text-right">Đã trúng / tổng số lượng</Th>
+        </tr>
+      </thead>
+      <tbody className="[font-variant-numeric:tabular-nums]">
+        {config.prizes.map((prize) => (
+          <tr key={prize.prizeId}>
+            <Td>
+              <MediaImage url={prize.imageUrl} alt={`Ảnh ${prize.label}`} className="h-12 w-12" />
+            </Td>
+            <Td>
+              <p className="font-semibold">{prize.label}</p>
+              {prize.description && <p className="max-w-xs text-xs text-stone-500">{prize.description}</p>}
+            </Td>
+            <Td className="whitespace-nowrap text-right">
+              {ppmToPercent(prize.probabilityPpm)}%<br />
+              <span className="text-xs text-stone-500">{oddsText(prize.probabilityPpm)}</span>
+            </Td>
+            <Td>{prize.enabled ? 'Bật' : 'Tắt'}</Td>
+            <Td className="text-right">{formatNumber(wonHere.get(prize.prizeId) ?? 0)}</Td>
+            <Td className="text-right">
+              {formatNumber(used.get(prize.prizeId) ?? 0)} / {prize.maxQuantity === null ? '—' : formatNumber(prize.maxQuantity)}
+            </Td>
+          </tr>
+        ))}
+      </tbody>
+    </TableFrame>
+  );
+}
+
+/** Phiên bản mã nạp demo trước khi đổi sang móc khóa: chỉ xem, giữ để đối chiếu mã đã phát */
+function LegacyPrizeTable({ config }) {
+  const issuedByPrize = new Map(config.issued.map((row) => [row.prizeId, row]));
+  return (
+    <>
+      <p className="mb-3 rounded-lg bg-stone-100 px-3 py-2 text-sm text-stone-700">
+        Phiên bản mã nạp điện thoại demo trước khi đổi sang móc khóa. Không còn được dùng để quay; giữ lại để đối chiếu mã đã phát.
+      </p>
+      <TableFrame label="Danh mục giải mã nạp cũ">
+        <thead>
+          <tr>
+            <Th>Tên giải</Th>
+            <Th>Nhà mạng</Th>
+            <Th className="text-right">Mệnh giá</Th>
+            <Th className="text-right">Xác suất</Th>
+            <Th>Trạng thái</Th>
+            <Th className="text-right">Đã phát</Th>
+            <Th className="text-right">Giới hạn kho</Th>
+          </tr>
+        </thead>
+        <tbody className="[font-variant-numeric:tabular-nums]">
+          {config.prizes.map((prize) => (
+            <tr key={prize.prizeId}>
+              <Td>{prize.label}</Td>
+              <Td>{prize.carrier || '—'}</Td>
+              <Td className="text-right">{formatVnd(prize.amountVnd)}</Td>
+              <Td className="text-right">{ppmToPercent(prize.probabilityPpm)}%</Td>
+              <Td>{prize.enabled ? 'Bật' : 'Tắt'}</Td>
+              <Td className="text-right">{formatNumber(issuedByPrize.get(prize.prizeId)?.count ?? 0)}</Td>
+              <Td className="text-right">{prize.maxQuantity === null ? 'Không giới hạn' : formatNumber(prize.maxQuantity)}</Td>
+            </tr>
+          ))}
+        </tbody>
+      </TableFrame>
+    </>
+  );
+}
+
 function PublishedView({ config, onChanged }) {
   const navigate = useNavigate();
   const notify = useNotice();
   const withReauth = useReauth();
   const [confirmEnd, setConfirmEnd] = useState(false);
-  const issuedByPrize = new Map(config.issued.map((row) => [row.prizeId, row]));
   const canEnd = config.status === 'published' && (!config.effectiveTo || new Date(config.effectiveTo) > new Date());
+  const spins = config.spins || { total: 0, wins: 0, losses: 0 };
 
   const cloneToDraft = async () => {
     try {
@@ -285,53 +459,33 @@ function PublishedView({ config, onChanged }) {
     }
   };
 
+  const details = [
+    ['Hiệu lực từ', formatDateTime(config.effectiveFrom)],
+    ['Hiệu lực đến', config.effectiveTo ? formatDateTime(config.effectiveTo) : 'Không tự kết thúc'],
+    ['Lượt quay ở phiên bản này', `${formatNumber(spins.total)} lượt: ${formatNumber(spins.wins)} trúng, ${formatNumber(spins.losses)} không trúng`],
+    ...(config.legacy
+      ? [['Ngân sách', config.budgetVnd === null ? 'Không giới hạn' : `${formatVnd(config.budgetUsedVnd)} / ${formatVnd(config.budgetVnd)} đã dùng`]]
+      : [['Hướng dẫn nhận quà', config.claimInstructions || '—']]),
+    ['Người sửa cuối', config.updatedByLabel || '—'],
+    ['Sửa lúc', formatDateTime(config.updatedAt)],
+    ['Người xuất bản', config.publishedByLabel || '—'],
+    ['Xuất bản lúc', formatDateTime(config.publishedAt)],
+    ['Sao từ phiên bản', config.basedOnVersion ?? '—'],
+    ['Ghi chú nội bộ', config.note || '—'],
+  ];
+
   return (
     <div className="space-y-4">
-      <Card title="Danh mục giải">
-        <TableFrame label="Danh mục giải của phiên bản đã xuất bản">
-          <thead>
-            <tr>
-              <Th>Tên giải</Th>
-              <Th>Nhà mạng</Th>
-              <Th className="text-right">Mệnh giá</Th>
-              <Th className="text-right">Xác suất</Th>
-              <Th>Trạng thái</Th>
-              <Th className="text-right">Đã phát</Th>
-              <Th className="text-right">Giới hạn kho</Th>
-            </tr>
-          </thead>
-          <tbody className="[font-variant-numeric:tabular-nums]">
-            {config.prizes.map((prize) => (
-              <tr key={prize.prizeId}>
-                <Td>{prize.label}</Td>
-                <Td>{prize.carrier}</Td>
-                <Td className="text-right">{formatVnd(prize.amountVnd)}</Td>
-                <Td className="text-right">{ppmToPercent(prize.probabilityPpm)}%</Td>
-                <Td>{prize.enabled ? 'Bật' : 'Tắt'}</Td>
-                <Td className="text-right">{formatNumber(issuedByPrize.get(prize.prizeId)?.count ?? 0)}</Td>
-                <Td className="text-right">{prize.maxQuantity === null ? 'Không giới hạn' : formatNumber(prize.maxQuantity)}</Td>
-              </tr>
-            ))}
-          </tbody>
-        </TableFrame>
+      <Card title={config.legacy ? 'Danh mục giải' : 'Mẫu móc khóa'}>
+        {config.legacy ? <LegacyPrizeTable config={config} /> : <KeychainTable config={config} />}
       </Card>
 
       <Card title="Thông tin phiên bản">
         <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
-          {[
-            ['Hiệu lực từ', formatDateTime(config.effectiveFrom)],
-            ['Hiệu lực đến', config.effectiveTo ? formatDateTime(config.effectiveTo) : 'Không tự kết thúc'],
-            ['Ngân sách', config.budgetVnd === null ? 'Không giới hạn' : `${formatVnd(config.budgetUsedVnd)} / ${formatVnd(config.budgetVnd)} đã dùng`],
-            ['Người sửa cuối', config.updatedByLabel || '—'],
-            ['Sửa lúc', formatDateTime(config.updatedAt)],
-            ['Người xuất bản', config.publishedByLabel || '—'],
-            ['Xuất bản lúc', formatDateTime(config.publishedAt)],
-            ['Sao từ phiên bản', config.basedOnVersion ?? '—'],
-            ['Ghi chú', config.note || '—'],
-          ].map(([label, value]) => (
+          {details.map(([label, value]) => (
             <div key={label}>
               <dt className="text-stone-500">{label}</dt>
-              <dd className="font-semibold text-stone-800">{value}</dd>
+              <dd className="whitespace-pre-line break-words font-semibold text-stone-800">{value}</dd>
             </div>
           ))}
         </dl>
@@ -351,7 +505,7 @@ function PublishedView({ config, onChanged }) {
       {confirmEnd && (
         <ConfirmDialog
           title={`Ngừng phiên bản ${config.version}`}
-          description="Phiên bản còn hiệu lực gần nhất sẽ được dùng. Nếu không còn bản nào, Gacha tạm dừng và sinh viên giữ nguyên lượt quay."
+          description="Phiên bản còn hiệu lực gần nhất sẽ được dùng. Nếu không còn bản nào, quay thưởng tri ân tạm dừng và sinh viên giữ nguyên lượt quay. Móc khóa đã trúng vẫn được trao như cũ."
           confirmLabel="Ngừng hiệu lực"
           onConfirm={async () => {
             onChanged(await withReauth(() => adminApi.endGachaConfig(config.id)));
@@ -369,7 +523,7 @@ export default function GachaConfigPage() {
   const { data: config, loading, error, reload, setData } = useLoad(() => adminApi.gachaConfig(id), [id]);
 
   useEffect(() => {
-    document.title = 'Cấu hình Gacha · Quản trị GreenCanteen';
+    document.title = 'Cấu hình quay thưởng tri ân · Quản trị GreenCanteen';
   }, []);
 
   if (!config && loading) return <LoadingState />;
@@ -380,7 +534,11 @@ export default function GachaConfigPage() {
     <>
       <PageHeader
         title={`Phiên bản ${config.version}`}
-        description={<Link to="/gacha" className="font-semibold text-leaf-800 underline underline-offset-2">Các phiên bản</Link>}
+        description={
+          <Link to="/gacha" className="font-semibold text-leaf-800 underline underline-offset-2">
+            Các phiên bản
+          </Link>
+        }
         actions={
           <>
             <Badge tone={isDraft ? 'amber' : 'stone'}>{CONFIG_STATUS_LABELS[config.status]}</Badge>
@@ -388,6 +546,7 @@ export default function GachaConfigPage() {
           </>
         }
       />
+      <GachaTabs />
       {isDraft ? (
         <DraftEditor key={config.id} config={config} onSaved={(saved) => setData({ ...config, ...saved })} onChanged={reload} />
       ) : (

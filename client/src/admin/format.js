@@ -18,6 +18,13 @@ export function ppmToPercent(ppm) {
   return fraction ? `${whole}.${fraction}` : String(whole);
 }
 
+/** Xác suất ppm → "≈ 1 trên N lượt", kiểu cách nói tỉ lệ của xổ số; 0 → "—" */
+export function oddsText(ppm) {
+  if (!Number.isFinite(ppm) || ppm <= 0) return '—';
+  const n = Math.round(1_000_000 / ppm);
+  return n <= 1 ? 'mọi lượt' : `≈ 1 trên ${n.toLocaleString('vi-VN')} lượt`;
+}
+
 /** "8.3334" → 83334. Sai định dạng hoặc quá 4 chữ số thập phân → null */
 export function percentToPpm(text) {
   const match = /^(\d{1,3})(?:[.,](\d{1,4}))?$/.exec(String(text).trim());
@@ -61,6 +68,8 @@ export function slugify(text) {
 
 export const STORY_STATUS_LABELS = { draft: 'Nháp', published: 'Đã xuất bản', archived: 'Đã gỡ' };
 export const CONFIG_STATUS_LABELS = { draft: 'Nháp', published: 'Đã xuất bản', discarded: 'Đã hủy' };
+export const MEDIA_KIND_LABELS = { keychain: 'Ảnh móc khóa', win: 'Sticker trúng', lose: 'Sticker không trúng' };
+export const DELIVERY_STATUS_LABELS = { pending: 'Chờ trao', delivered: 'Đã trao' };
 export const USER_STATUS_LABELS = { active: 'Đang hoạt động', locked: 'Đang khóa' };
 export const ROLE_LABELS = { user: 'Người dùng', admin: 'Quản trị viên' };
 export const AUDIT_RESULT_LABELS = { success: 'Thành công', failure: 'Thất bại', denied: 'Bị từ chối' };
@@ -99,10 +108,15 @@ export const AUDIT_ACTION_LABELS = {
   'story.update': 'Sửa câu chuyện',
   'story.publish': 'Xuất bản câu chuyện',
   'story.unpublish': 'Gỡ câu chuyện',
-  'gacha.config_create': 'Tạo nháp cấu hình Gacha',
-  'gacha.config_update': 'Sửa nháp cấu hình Gacha',
-  'gacha.config_publish': 'Xuất bản cấu hình Gacha',
-  'gacha.config_end': 'Ngừng cấu hình Gacha',
-  'gacha.config_discard': 'Hủy nháp cấu hình Gacha',
+  'gacha.config_create': 'Tạo nháp cấu hình quay thưởng tri ân',
+  'gacha.config_update': 'Sửa nháp cấu hình quay thưởng tri ân',
+  'gacha.config_publish': 'Xuất bản cấu hình quay thưởng tri ân',
+  'gacha.config_end': 'Ngừng cấu hình quay thưởng tri ân',
+  'gacha.config_discard': 'Hủy nháp cấu hình quay thưởng tri ân',
+  'gacha.media_create': 'Tải ảnh / sticker quay thưởng',
+  'gacha.media_update': 'Sửa ảnh / sticker quay thưởng',
+  'gacha.media_delete': 'Xóa ảnh / sticker quay thưởng',
+  'gacha.reward_deliver': 'Xác nhận đã trao móc khóa',
+  'gacha.reward_undeliver': 'Hủy xác nhận đã trao móc khóa',
   'site_settings.update': 'Sửa thiết lập website',
 };

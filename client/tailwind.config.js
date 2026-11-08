@@ -1,7 +1,8 @@
 /** @type {import('tailwindcss').Config} */
 export default {
   // Khu quản trị có cấu hình riêng (tailwind.admin.config.js) để lớp CSS của nó không vào gói của sinh viên
-  content: ['./index.html', './privacy.html', './data-deletion.html', './src/**/*.{js,jsx}', '!./src/admin/**'],
+  // ./*.html: index.html và các trang thông tin, chính sách tĩnh (danh sách ở src/legal/pages.js)
+  content: ['./*.html', './src/**/*.{js,jsx}', '!./src/admin/**'],
   theme: {
     extend: {
       colors: {

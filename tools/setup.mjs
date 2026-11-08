@@ -3,7 +3,6 @@
 //   --mongo-dir <thư mục>  nơi cài MongoDB trên Windows (mặc định D:\MongoDB, không có ổ D thì thư mục người dùng)
 //   --mongo-port <cổng>    mặc định 27017
 //   --skip-mongodb         dùng MongoDB có sẵn hoặc Atlas
-//   --skip-ollama          không kiểm tra, không tải mô hình Ollama
 import { spawn, spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import { once } from 'node:events';
@@ -33,15 +32,12 @@ const APP_USER = 'greencanteen_app';
 const APP_ROLE = 'greencanteenApp';
 // Đủ cho mọi thao tác của ứng dụng, không có dropCollection, dropDatabase, dropIndex, renameCollection
 const APP_ACTIONS = ['find', 'insert', 'update', 'remove', 'createCollection', 'createIndex', 'listCollections', 'listIndexes', 'collStats', 'dbStats'];
-const OLLAMA_URL = 'http://127.0.0.1:11434';
-const OLLAMA_MODEL = 'qwen3-vl:4b-instruct';
 
 const { values: options } = parseArgs({
   options: {
     'mongo-dir': { type: 'string' },
     'mongo-port': { type: 'string', default: '27017' },
     'skip-mongodb': { type: 'boolean', default: false },
-    'skip-ollama': { type: 'boolean', default: false },
   },
 });
 const MONGO_DIR = options['mongo-dir'] ? path.resolve(options['mongo-dir']) : fs.existsSync('D:\\') ? 'D:\\MongoDB' : path.join(os.homedir(), 'MongoDB');
@@ -85,14 +81,13 @@ function installDependencies(dir) {
 function prepareEnvFile() {
   if (fs.existsSync(ENV_PATH)) return 'đã có, giữ nguyên';
   fs.copyFileSync(path.join(SERVER, '.env.example'), ENV_PATH);
-  // .env.example khuyên 60000 khi dùng ensemble: nạp lại mô hình trên Ollama mất tới 18 giây
-  setEnvValue('VISION_TIMEOUT_MS', '60000');
   return 'đã tạo từ .env.example';
 }
 
-function prepareClipModel() {
+// Bộ phân loại ONNX (VISION_CLASSIFIER_MODEL hoặc mô hình mặc định), chạy trên CPU trong tiến trình server
+function prepareVisionModel() {
   if (run('npm run vision:verify', SERVER)) return 'đã có, khớp mã băm';
-  if (!run('npm run vision:download', SERVER)) throw new Error('Tải mô hình CLIP lỗi');
+  if (!run('npm run vision:download', SERVER)) throw new Error('Tải mô hình nhận diện ảnh lỗi');
   return 'đã tải, khớp mã băm';
 }
 
@@ -268,34 +263,13 @@ function prepareAdminKey() {
   return 'đã tạo';
 }
 
-async function prepareOllama() {
-  const model = envValue('VISION_OLLAMA_MODEL') || OLLAMA_MODEL;
-  if (spawnSync('ollama --version', { shell: true, stdio: 'ignore' }).status !== 0) {
-    todo.push(`Cài Ollama (https://ollama.com/download) rồi chạy lại để tải ${model}. Chưa có thì check-in bằng ảnh báo chưa sẵn sàng`);
-    return 'chưa cài Ollama';
-  }
-  const [name, tag = 'latest'] = model.split(':');
-  const modelsDir = process.env.OLLAMA_MODELS || path.join(os.homedir(), '.ollama', 'models');
-  const downloaded = fs.existsSync(path.join(modelsDir, 'manifests', 'registry.ollama.ai', 'library', name, tag));
-  const running = await fetch(`${OLLAMA_URL}/api/version`, { signal: AbortSignal.timeout(3000) }).then((res) => res.ok, () => false);
-
-  if (!running) {
-    todo.push(downloaded ? 'Mở ứng dụng Ollama trước khi check-in bằng ảnh' : `Mở ứng dụng Ollama rồi chạy lại để tải ${model} (~3,3 GB)`);
-    return downloaded ? `${model} đã có, Ollama chưa chạy` : 'Ollama chưa chạy';
-  }
-  if (downloaded) return `${model} đã có`;
-  if (!run(`ollama pull ${model}`, ROOT)) throw new Error(`Tải ${model} lỗi`);
-  return `đã tải ${model}`;
-}
-
 const STEPS = [
   ['Thư viện server', () => installDependencies(SERVER)],
   ['Thư viện client', () => installDependencies(CLIENT)],
   ['Cấu hình server/.env', prepareEnvFile],
-  ['Mô hình CLIP', prepareClipModel],
+  ['Mô hình nhận diện ảnh (ONNX, CPU)', prepareVisionModel],
   ['MongoDB', options['skip-mongodb'] ? () => 'bỏ qua theo --skip-mongodb' : prepareMongodb],
   ['Khóa khu quản trị', prepareAdminKey],
-  ['Ollama', options['skip-ollama'] ? () => 'bỏ qua theo --skip-ollama' : prepareOllama],
 ];
 
 async function main() {

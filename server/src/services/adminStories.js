@@ -1,3 +1,4 @@
+import net from 'net';
 import { Story } from '../models/Story.js';
 import { AdminError, invalidInput, notFound, versionConflict } from './adminErrors.js';
 import { escapeRegex, parsePaging } from './adminQuery.js';
@@ -20,6 +21,29 @@ function isHttpsUrl(value) {
     return false;
   }
 }
+
+// Tên miền không phân giải được trên Internet (RFC 6761, 6762, 8375 và tên hay dùng trong mạng nội bộ)
+const INTERNAL_NAME = /(^|\.)(localhost|local|localdomain|internal|intranet|lan|home|corp|home\.arpa|invalid|test)$/i;
+
+/**
+ * SEC-04: ảnh câu chuyện do trình duyệt của mọi sinh viên tự tải, liên kết nguồn do họ bấm. Chỉ nhận tên miền công khai trên cổng
+ * HTTPS mặc định: không địa chỉ IP (kể cả dạng số viết tắt mà trình phân tích URL quy về IP), không tên một nhãn hay tên mạng nội bộ,
+ * không kèm tài khoản. Tên miền công khai trỏ vào IP nội bộ thì không kiểm được ở đây (máy chủ không phân giải DNS hộ trình duyệt).
+ */
+export function isPublicHttpsUrl(value) {
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== 'https:' || !url.hostname || url.username || url.password || url.port) return false;
+  const host = url.hostname.toLowerCase();
+  if (host.startsWith('[') || net.isIP(host)) return false;
+  return host.includes('.') && !INTERNAL_NAME.test(host);
+}
+
+const PUBLIC_URL_MESSAGE = 'phải trỏ tới tên miền công khai trên cổng HTTPS mặc định (không địa chỉ IP, máy trong mạng nội bộ hay tài khoản trong URL).';
 
 function normalizeSource(raw, fields) {
   const source = {
@@ -44,6 +68,7 @@ function normalizeSource(raw, fields) {
   }
   if (source.doi && !DOI.test(source.doi)) fields['source.doi'] = 'DOI không đúng định dạng (10.xxxx/...).';
   if (source.url && (source.url.length > MAX_URL || !isHttpsUrl(source.url))) fields['source.url'] = 'URL nguồn phải dùng https://.';
+  else if (source.url && !isPublicHttpsUrl(source.url)) fields['source.url'] = `URL nguồn ${PUBLIC_URL_MESSAGE}`;
   return source;
 }
 
@@ -58,6 +83,7 @@ function normalizeInput(body) {
   }
   if (value.icon.length > 8) fields.icon = 'Biểu tượng tối đa 8 ký tự.';
   if (value.imageUrl && (value.imageUrl.length > MAX_URL || !isHttpsUrl(value.imageUrl))) fields.imageUrl = 'URL ảnh phải dùng https://.';
+  else if (value.imageUrl && !isPublicHttpsUrl(value.imageUrl)) fields.imageUrl = `URL ảnh ${PUBLIC_URL_MESSAGE}`;
   value.source = normalizeSource(body?.source, fields);
   if (Object.keys(fields).length > 0) throw invalidInput(fields);
   return value;

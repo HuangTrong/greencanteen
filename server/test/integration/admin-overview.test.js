@@ -30,6 +30,16 @@ async function seedCheckIn(at, { valid = true, verification = 'local' } = {}) {
   });
 }
 
+async function seedSpin(at, outcome) {
+  await GachaReward.collection.insertOne({
+    userId: new mongoose.Types.ObjectId(),
+    studentId: 'x',
+    outcome,
+    ...(outcome === 'win' ? { prizeType: 'keychain', prizeLabel: 'Lá xanh', claimCode: `TA-${uniqueSuffix()}`, deliveryStatus: 'pending' } : {}),
+    createdAt: new Date(at),
+  });
+}
+
 async function seedReward(at, amountVnd) {
   await GachaReward.collection.insertOne({
     userId: new mongoose.Types.ObjectId(),
@@ -92,12 +102,16 @@ describe('thống kê từ dữ liệu bền vững', () => {
     assert.deepEqual(data.series.map((row) => [row.period, row.checkInsValid]), [['2026-11', 2], ['2026-12', 1], ['2027-01', 0], ['2027-02', 1]]);
   });
 
-  test('tiền là số nguyên VND, cộng chính xác; mỗi mệnh giá có dòng riêng', async () => {
+  test('lượt quay gồm cả lượt không trúng và mã nạp demo cũ; lượt trúng chỉ đếm móc khóa; mã nạp cũ theo mệnh giá', async () => {
     for (const amount of [10_000, 10_000, 20_000, 50_000]) await seedReward('2026-04-02T05:00:00Z', amount);
+    await seedSpin('2026-04-03T05:00:00Z', 'win');
+    await seedSpin('2026-04-03T06:00:00Z', 'lose');
+    await seedSpin('2026-04-03T07:00:00Z', 'lose');
     const data = await overview('from=2026-04-01&to=2026-04-30');
-    assert.equal(data.totals.gachaSpins, 4);
-    assert.equal(data.totals.rewardFaceValueVnd, 90_000);
-    assert.ok(Number.isInteger(data.totals.rewardFaceValueVnd));
+    assert.equal(data.totals.gachaSpins, 7);
+    assert.equal(data.totals.gachaWins, 1);
+    assert.deepEqual(data.series.find((row) => row.period === '2026-04-03').gachaWins, 1);
+    assert.ok(!('rewardFaceValueVnd' in data.totals));
     assert.deepEqual(data.rewardsByAmount, [
       { amountVnd: 10_000, count: 2, faceValueVnd: 20_000 },
       { amountVnd: 20_000, count: 1, faceValueVnd: 20_000 },
@@ -120,7 +134,7 @@ describe('thống kê từ dữ liệu bền vững', () => {
     const data = await overview('');
     assert.equal(data.series.length, 30);
     assert.equal(data.range.granularity, 'day');
-    for (const key of ['accountsNew', 'checkInsValid', 'checkInsInvalid', 'gachaSpins', 'rewardFaceValueVnd', 'pageViews', 'visits', 'activeUsers', 'clickThrough']) {
+    for (const key of ['accountsNew', 'checkInsValid', 'checkInsInvalid', 'gachaSpins', 'gachaWins', 'pageViews', 'visits', 'activeUsers', 'clickThrough']) {
       const definition = data.definitions.find((d) => d.key === key);
       assert.ok(definition?.unit && definition.source && definition.definition, key);
     }
@@ -136,14 +150,14 @@ describe('thống kê từ dữ liệu bền vững', () => {
 });
 
 describe('tài chính', () => {
-  test('không có nguồn giao dịch: doanh thu, chi phí, lợi nhuận là null, mệnh giá Gacha không bị tính là doanh thu', async () => {
+  test('không có nguồn giao dịch: doanh thu, chi phí, lợi nhuận là null; quà quay thưởng không bị tính là doanh thu', async () => {
     await seedReward('2026-04-02T05:00:00Z', 50_000);
     const { financial, totals } = await overview('from=2026-04-01&to=2026-04-30');
     assert.equal(financial.status, 'no_data_source');
     assert.equal(financial.revenueVnd, null);
     assert.equal(financial.costVnd, null);
     assert.equal(financial.profitVnd, null);
-    assert.equal(totals.rewardFaceValueVnd, 50_000);
+    assert.equal(totals.gachaSpins, 1);
   });
 });
 
@@ -297,5 +311,36 @@ describe('chỉ số truy cập', () => {
     setEnv(ANALYTICS);
     const res = await createClient(ctx.base).request('POST', '/api/analytics/events', { csrf: false, json: { type: 'page_view', page: 'home', visitId: visitId() } });
     assert.equal(res.status, 403);
+  });
+
+  // SEC-07: sự kiện không cần đăng nhập nên số liệu thổi phồng được; trần theo lượt truy cập và theo số lượt truy cập mới của một IP
+  // giới hạn mức thổi phồng mỗi nguồn (không chặn được nhiều IP: số liệu vẫn chỉ mang tính tham khảo, ghi rõ trong định nghĩa)
+  test('SEC-07: một lượt truy cập ghi tối đa ANALYTICS_EVENTS_PER_VISIT sự kiện, phần vượt bị từ chối và không được ghi', async () => {
+    setEnv({ ...ANALYTICS, ANALYTICS_EVENTS_PER_VISIT: '5' });
+    await AnalyticsEvent.deleteMany({});
+    const visit = visitId();
+    const statuses = [];
+    for (let i = 0; i < 8; i += 1) statuses.push((await send(createClient(ctx.base), { type: 'page_view', page: 'home', visitId: visit })).status);
+    assert.deepEqual(statuses, [202, 202, 202, 202, 202, 429, 429, 429]);
+    assert.equal(await AnalyticsEvent.countDocuments({ visitId: visit }), 5);
+  });
+
+  test('SEC-07: một IP mở tối đa ANALYTICS_VISITS_PER_IP lượt truy cập mới trong 10 phút; lượt đã mở vẫn ghi tiếp được', async () => {
+    setEnv({ ...ANALYTICS, ANALYTICS_VISITS_PER_IP: '3' });
+    await AnalyticsEvent.deleteMany({});
+    const visits = [visitId(), visitId(), visitId(), visitId(), visitId()];
+    const statuses = [];
+    for (const visit of visits) statuses.push((await send(createClient(ctx.base), { type: 'page_view', page: 'home', visitId: visit })).status);
+    assert.deepEqual(statuses, [202, 202, 202, 429, 429]);
+    assert.equal((await send(createClient(ctx.base), { type: 'click', target: 'home_primary_cta', visitId: visits[0] })).status, 202, 'lượt đã mở không bị chặn');
+    assert.equal(await AnalyticsEvent.countDocuments(), 4);
+  });
+
+  test('SEC-07: định nghĩa chỉ số ghi rõ số liệu truy cập đến từ trình duyệt, chỉ mang tính tham khảo', async () => {
+    setEnv(ANALYTICS);
+    const { definitions } = await overview('');
+    for (const key of ['pageViews', 'visits', 'clickThrough']) {
+      assert.match(definitions.find((d) => d.key === key).definition, /tham khảo/, key);
+    }
   });
 });

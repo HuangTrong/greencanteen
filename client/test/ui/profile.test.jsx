@@ -1,5 +1,5 @@
 // Trang Cá nhân: yêu cầu gửi tới trang qua URL (đặt lại mật khẩu, kết quả OAuth, QR), hồ sơ – huy hiệu – lịch sử –
-// Gacha, đăng xuất. Mỗi tình huống kiểm tra cả trạng thái đã / chưa đăng nhập (bảng quyết định).
+// quay thưởng tri ân, đăng xuất. Mỗi tình huống kiểm tra cả trạng thái đã / chưa đăng nhập (bảng quyết định).
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, test, vi } from 'vitest';
@@ -10,7 +10,9 @@ const HISTORY = [
   { _id: 'h1', createdAt: '2026-10-20T03:15:00.000Z', pointsEarned: 10, aiReason: 'Bình inox', category: 'reusable_bottle', categoryLabel: 'Bình nước cá nhân có thể tái sử dụng', confidence: 0.95, verification: 'ai' },
   { _id: 'h2', createdAt: '2026-10-19T03:15:00.000Z', pointsEarned: 10, aiReason: '', category: 'reusable_cup', categoryLabel: 'Ly/cốc cá nhân có thể tái sử dụng', confidence: 0.99, verification: 'simulated' },
 ];
-const REWARDS = [{ _id: 'r1', carrier: 'Viettel', amountVnd: 10000, topUpCode: 'GC-10K-AAAA1111', prizeType: 'phone_topup', createdAt: '2026-10-20T03:16:00.000Z' }];
+const REWARDS = [
+  { id: 'r1', type: 'keychain', label: 'Lá xanh', imageUrl: '/api/gacha/media/abc', claimCode: 'TA-AAAAA-BBBBB', deliveryStatus: 'pending', deliveredAt: null, claimInstructions: 'Nhận ở quầy căn tin', createdAt: '2026-10-20T03:16:00.000Z' },
+];
 
 const loggedOut = (extra = {}) => ({
   'GET /api/auth/me': json({ error: 'Bạn cần đăng nhập để tiếp tục.', code: 'auth_required' }, 401),
@@ -21,7 +23,7 @@ const loggedIn = (extra = {}, user = {}) => ({
   'GET /api/auth/me': json({ user: { ...USER, ...user } }),
   'GET /api/auth/providers': json(PROVIDERS),
   'GET /api/checkin/history': json({ history: HISTORY }),
-  'GET /api/gacha/rewards': json({ pendingGachaSpins: 1, rewards: REWARDS }),
+  'GET /api/gacha/results': json({ pendingGachaSpins: 1, stats: { spins: 3, wins: 1 }, rewards: REWARDS }),
   'GET /api/auth/security': json(SECURITY),
   ...extra,
 });
@@ -147,7 +149,7 @@ describe('yêu cầu gửi tới trang qua URL', () => {
 });
 
 describe('hồ sơ đã đăng nhập', () => {
-  test('số liệu, huy hiệu (kể cả mã lạ), lịch sử có nhãn mô phỏng, Gacha', async () => {
+  test('số liệu, huy hiệu (kể cả mã lạ), lịch sử có nhãn mô phỏng, quay thưởng tri ân', async () => {
     mockApi(loggedIn({}, { badges: ['first_sip', 'huy_hieu_moi'] }));
     renderApp('/profile');
     expect(await screen.findByText('MSSV SV001')).toBeInTheDocument();
@@ -159,7 +161,8 @@ describe('hồ sơ đã đăng nhập', () => {
     expect(screen.getByText(/Bình nước cá nhân có thể tái sử dụng · 95%/)).toBeInTheDocument();
     expect(screen.getByText('Mô phỏng')).toBeInTheDocument();
     expect(screen.getByText('Check-in hợp lệ')).toBeInTheDocument();
-    expect(await screen.findByText('GC-10K-AAAA1111')).toBeInTheDocument();
+    expect(await screen.findByText('TA-AAAAA-BBBBB')).toBeInTheDocument();
+    expect(screen.getByText('Đã quay 3 lượt · trúng 1 móc khóa')).toBeInTheDocument();
     expect(screen.getByText('Lượt quay đang có:').parentElement).toHaveTextContent('Lượt quay đang có: 1');
   });
 
@@ -168,15 +171,15 @@ describe('hồ sơ đã đăng nhập', () => {
     mockApi(
       loggedIn({
         'GET /api/checkin/history': () => ((attempt += 1) === 1 ? json({ error: 'Lỗi máy chủ.', code: 'server_error' }, 500) : json({ history: [] })),
-        'GET /api/gacha/rewards': json({ pendingGachaSpins: 0, rewards: [] }),
+        'GET /api/gacha/results': json({ pendingGachaSpins: 0, stats: { spins: 0, wins: 0 }, rewards: [] }),
       })
     );
     renderApp('/profile');
     const alert = await screen.findByText('Lỗi máy chủ.');
     await userEvent.click(within(alert.parentElement).getByRole('button', { name: 'Thử lại' }));
     expect(await screen.findByText('Chưa có lịch sử. Hãy check-in tại căn tin!')).toBeInTheDocument();
-    expect(screen.getByText('Chưa có mã nạp nào.')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Quay Gacha' })).toBeDisabled();
+    expect(screen.getByText('Chưa trúng móc khóa nào.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Quay thưởng' })).toBeDisabled();
   });
 
   test('đăng xuất thành công → về trạng thái chưa đăng nhập', async () => {

@@ -66,13 +66,62 @@ export const sha256 = (buf) => crypto.createHash('sha256').update(buf).digest('h
 export const MAX_INPUT_PIXELS = 100_000_000;
 const FINGERPRINT_MAX_SIDE = 1024;
 
+// Dấu gần đúng (SEC-02): dHash ngang (9×8) + dọc (8×9) trên ảnh xám = 128 bit. Đo trên 400 ảnh chụp thật (2026-11-08): bản nén lại
+// JPEG 50–95, thu nhỏ một nửa, đổi sang WebP cách ảnh gốc ≤ 7 bit ở 94–99% trường hợp; 79 800 cặp ảnh khác nhau không cặp nào ≤ 16 bit
+// ngoài vài ảnh trùng sẵn trong bộ dữ liệu. Cắt bớt mép ảnh làm dấu đổi nhiều nên không bắt được hết.
+export const NEAR_DUPLICATE_MAX_BITS = 7;
+const PHASH_BANDS = 8; // 8 dải × 16 bit: hai dấu cách ≤ 7 bit chắc chắn trùng nguyên ít nhất một dải (nguyên lý chuồng bồ câu)
+// Ảnh gần như đồng màu không đủ chi tiết để so gần đúng (mọi ảnh trơn cho cùng một dấu): bỏ qua, chỉ dùng băm chính xác
+const MIN_DETAIL_STDDEV = 3;
+
+function dhashBits(gray, width, height, horizontal) {
+  let bits = '';
+  for (let y = 0; y < (horizontal ? height : height - 1); y += 1) {
+    for (let x = 0; x < (horizontal ? width - 1 : width); x += 1) {
+      const here = gray[y * width + x];
+      const next = horizontal ? gray[y * width + x + 1] : gray[(y + 1) * width + x];
+      bits += here > next ? '1' : '0';
+    }
+  }
+  return bits;
+}
+
+const bitsToHex = (bits) => bits.match(/.{4}/g).map((nibble) => parseInt(nibble, 2).toString(16)).join('');
+
+async function perceptualHash(sharp, raw, info) {
+  const source = { raw: { width: info.width, height: info.height, channels: info.channels } };
+  const [h, v] = await Promise.all([
+    sharp(raw, source).greyscale().resize(9, 8, { fit: 'fill' }).raw().toBuffer(),
+    sharp(raw, source).greyscale().resize(8, 9, { fit: 'fill' }).raw().toBuffer(),
+  ]);
+  const mean = h.reduce((sum, value) => sum + value, 0) / h.length;
+  const stddev = Math.sqrt(h.reduce((sum, value) => sum + (value - mean) ** 2, 0) / h.length);
+  if (stddev < MIN_DETAIL_STDDEV) return null;
+  const hash = bitsToHex(dhashBits(h, 9, 8, true) + dhashBits(v, 8, 9, false));
+  const width = hash.length / PHASH_BANDS;
+  return { hash, bands: Array.from({ length: PHASH_BANDS }, (_, i) => `${i}:${hash.slice(i * width, (i + 1) * width)}`) };
+}
+
+/** Số bit khác nhau giữa hai dấu gần đúng (chuỗi hex cùng độ dài) */
+export function hammingDistance(a, b) {
+  let distance = 0;
+  for (let i = 0; i < a.length; i += 1) {
+    let x = parseInt(a[i], 16) ^ parseInt(b[i], 16);
+    while (x) {
+      distance += x & 1;
+      x >>= 1;
+    }
+  }
+  return distance;
+}
+
 /**
- * Băm theo điểm ảnh sau khi giải mã để nhận ra cùng một ảnh dù tệp khác byte (nối thêm byte, đổi metadata, nén lại không mất dữ liệu).
- * Ảnh lớn được thu nhỏ khi giải mã nên bộ nhớ không phụ thuộc kích thước gốc. Ảnh mã hóa lại có mất dữ liệu cho điểm ảnh khác, vẫn là
- * ảnh mới: chặn được cả trường hợp đó phải so khớp gần đúng và chấp nhận chặn nhầm.
- * Không giải mã được → null, nơi gọi dùng lại băm theo byte.
+ * Nhận dạng ảnh sau một lần giải mã:
+ * - exact: băm theo điểm ảnh, nhận ra cùng một ảnh dù tệp khác byte (nối thêm byte, đổi metadata, nén lại không mất dữ liệu);
+ * - perceptual: dấu gần đúng 128 bit để nhận ra ảnh đã nén lại có mất dữ liệu, thu nhỏ hay đổi định dạng; null khi ảnh quá ít chi tiết.
+ * Ảnh lớn được thu nhỏ khi giải mã nên bộ nhớ không phụ thuộc kích thước gốc. Không giải mã được → null, nơi gọi dùng băm theo byte.
  */
-export async function pixelFingerprint(buffer) {
+export async function imageFingerprints(buffer) {
   const { default: sharp } = await import('sharp');
   try {
     const { data, info } = await sharp(buffer, { limitInputPixels: MAX_INPUT_PIXELS })
@@ -81,8 +130,14 @@ export async function pixelFingerprint(buffer) {
       .toColourspace('srgb')
       .raw()
       .toBuffer({ resolveWithObject: true });
-    return crypto.createHash('sha256').update(`${info.width}x${info.height}x${info.channels}:`).update(data).digest('hex');
+    const exact = crypto.createHash('sha256').update(`${info.width}x${info.height}x${info.channels}:`).update(data).digest('hex');
+    return { exact, perceptual: await perceptualHash(sharp, data, info) };
   } catch {
     return null;
   }
+}
+
+/** Chỉ băm theo điểm ảnh (giữ cho nơi gọi cũ) */
+export async function pixelFingerprint(buffer) {
+  return (await imageFingerprints(buffer))?.exact ?? null;
 }

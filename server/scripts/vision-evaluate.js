@@ -1,5 +1,6 @@
-// Đánh giá bộ nhận diện bằng ảnh đã gán nhãn của trường — chạy hoàn toàn tại máy chủ, không gửi ảnh ra ngoài:
-//   npm run vision:evaluate -- <thư mục> [--engine clip|ollama|ensemble] [--json kết-quả.json]
+// Đánh giá bộ nhận diện (bộ phân loại ONNX, engine classifier) bằng ảnh đã gán nhãn của trường — chạy hoàn toàn tại
+// máy chủ trên CPU, không gửi ảnh ra ngoài:
+//   npm run vision:evaluate -- <thư mục> [--engine classifier] [--json kết-quả.json]
 // <thư mục> gồm các thư mục con theo loại: reusable_bottle/ reusable_cup/ single_use_plastic_cup/ other_container/
 // no_container/ unclear/ (ảnh JPEG, PNG, WebP). In ma trận nhầm lẫn, tỉ lệ chấp nhận nhầm / từ chối nhầm và quét ngưỡng
 // để chọn VISION_CONFIDENCE_THRESHOLD.
@@ -21,15 +22,15 @@ const engine = option('--engine');
 const jsonOut = option('--json');
 const root = args[0];
 if (!root || !fs.existsSync(root)) {
-  console.error('Cách dùng: npm run vision:evaluate -- <thư mục ảnh có gán nhãn> [--engine clip|ollama|ensemble] [--json kết-quả.json]');
+  console.error('Cách dùng: npm run vision:evaluate -- <thư mục ảnh có gán nhãn> [--engine classifier] [--json kết-quả.json]');
   process.exit(1);
 }
 if (engine) process.env.VISION_ENGINE = engine;
 delete process.env.VISION_SIMULATION; // đánh giá luôn dùng bộ nhận diện thật
 
-const cfg = visionConfig({ evaluating: true });
+const cfg = visionConfig();
 if (cfg.mode !== 'local') {
-  console.error(`Bộ nhận diện chưa sẵn sàng (${cfg.problem}). Kiểm tra VISION_ENGINE / VISION_OLLAMA_URL / VISION_CLIP_MODEL.`);
+  console.error(`Bộ nhận diện chưa sẵn sàng (${cfg.problem}). Kiểm tra VISION_ENGINE / VISION_CLASSIFIER_MODEL.`);
   process.exit(1);
 }
 

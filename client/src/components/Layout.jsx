@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation } from 'react-router';
 import { useUser } from '../context/UserContext';
 import { useSiteSettings } from '../context/SiteSettingsContext';
 import { trackPageView } from '../lib/analytics';
+import { FOOTER_PAGES } from '../legal/pages';
 
 const navClass = ({ isActive }) =>
   `flex flex-col items-center gap-0.5 text-xs font-semibold transition-colors ${
@@ -75,11 +76,16 @@ export default function Layout() {
           </p>
         )}
         <Outlet />
-        <p className="mt-6 text-center text-xs text-stone-500">
-          <a href="/privacy.html" className="underline underline-offset-2">
-            Chính sách quyền riêng tư
-          </a>
-        </p>
+        {/* Trang thông tin, chính sách là HTML tĩnh nên dùng <a>, không qua router. <footer> nằm trong main nên không tạo thêm
+            landmark: thanh điều hướng dưới cùng vẫn là navigation duy nhất của trang. Không bọc trong <ul> để danh sách duy nhất
+            của trang vẫn là nội dung chính (vd. bảng xếp hạng) */}
+        <footer className="mt-6 flex flex-wrap justify-center gap-x-4 gap-y-2 text-center text-xs text-stone-500">
+          {FOOTER_PAGES.map(({ path, footer }) => (
+            <a key={path} href={path} className="underline underline-offset-2">
+              {footer}
+            </a>
+          ))}
+        </footer>
       </main>
 
       <nav className="safe-bottom fixed bottom-0 left-0 right-0 z-40 border-t border-leaf-100 bg-white/95 backdrop-blur-md">

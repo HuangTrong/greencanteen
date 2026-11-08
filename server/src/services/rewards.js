@@ -9,12 +9,34 @@ import {
   POINTS_PER_CHECKIN,
   computeBadges,
 } from './gamification.js';
-import { GACHA_PRIZE_TYPE, issueTopUpCode } from './gacha.js';
-import { getActiveGachaConfig, reservePrize } from './gachaConfig.js';
+import { GACHA_PRIZE_TYPE, issueClaimCode } from './gacha.js';
+import { drawFromConfig, getActiveGachaConfig, isKeychainConfig } from './gachaConfig.js';
+import { NEAR_DUPLICATE_MAX_BITS, hammingDistance } from './image.js';
 import { invalidatePublicStats } from './stats.js';
 
 // Số băm ảnh gần nhất giữ trong user để chặn gửi lại cùng một ảnh, kể cả khi gửi đồng thời
 const RECENT_IMAGE_HASHES = 30;
+// Ảnh gần trùng (SEC-02): ảnh của chính tài khoản đó thì luôn so; ảnh của tài khoản khác chỉ so trong cửa sổ này, để số ảnh đem so (và
+// khả năng chặn nhầm hai ảnh khác nhau) không lớn dần theo thời gian
+const CROSS_ACCOUNT_NEAR_DUPLICATE_MS = 7 * 24 * 60 * 60 * 1000;
+const MAX_NEAR_DUPLICATE_CANDIDATES = 500;
+
+/**
+ * Ảnh đã được thưởng gần trùng với ảnh này (cùng ảnh đã nén lại, thu nhỏ, đổi định dạng) hay không. perceptual = dấu gần đúng của
+ * services/image.js (null khi ảnh quá ít chi tiết → không so). Tìm ứng viên qua index các dải 16 bit rồi mới đếm bit khác nhau.
+ * Không nguyên tử giữa hai tài khoản gửi đồng thời; trần lượt mỗi ngày và thời gian chờ giới hạn phần lọt qua.
+ */
+export async function findNearDuplicate(userId, perceptual, now = new Date()) {
+  if (!perceptual) return null;
+  const candidates = await RewardedImage.find({
+    phashBands: { $in: perceptual.bands },
+    $or: [{ userId }, { createdAt: { $gte: new Date(now.getTime() - CROSS_ACCOUNT_NEAR_DUPLICATE_MS) } }],
+  })
+    .select('phash')
+    .limit(MAX_NEAR_DUPLICATE_CANDIDATES)
+    .lean();
+  return candidates.find((candidate) => candidate.phash && hammingDistance(candidate.phash, perceptual.hash) <= NEAR_DUPLICATE_MAX_BITS) || null;
+}
 
 const OUTBOXES = {
   checkInOutbox: CheckIn,
@@ -72,9 +94,10 @@ async function flushQuietly(userId, field) {
  * để cùng một ảnh gửi đồng thời từ hai tài khoản khác nhau cũng chỉ được thưởng một lần.
  * Trả về { user, checkInId } hoặc { rejected: 'duplicate_image' | 'cooldown' | 'locked' }.
  */
-export async function grantCheckInReward(user, { classification, imageSha256, storySlug, cooldownMs = 0 }) {
+export async function grantCheckInReward(user, { classification, imageSha256, perceptual = null, storySlug, cooldownMs = 0 }) {
+  if (await findNearDuplicate(user._id, perceptual)) return { rejected: 'duplicate_image' };
   try {
-    await RewardedImage.create({ _id: imageSha256, userId: user._id });
+    await RewardedImage.create({ _id: imageSha256, userId: user._id, ...(perceptual && { phash: perceptual.hash, phashBands: perceptual.bands }) });
   } catch (err) {
     if (Number(err?.code) === 11000) return { rejected: 'duplicate_image' };
     throw err;
@@ -156,34 +179,42 @@ export async function grantCheckInReward(user, { classification, imageSha256, st
 }
 
 /**
- * Quay Gacha: server chọn giải theo cấu hình đang hiệu lực, giữ chỗ kho / ngân sách (nếu có giới hạn), rồi trừ lượt có
- * điều kiện pendingGachaSpins >= 1 và ghi phần thưởng (qua outbox) trong MỘT lệnh nguyên tử → nhiều yêu cầu đồng thời
- * không thể dùng chung một lượt. Không còn lượt thì trả chỗ đã giữ; server dừng đúng lúc giữa hai bước chỉ làm kho hụt
- * đi một đơn vị (không bao giờ phát vượt giới hạn).
- * Trả về null khi hết lượt, { unavailable: 'no_config' | 'out_of_stock' } khi không phát được giải (lượt được giữ nguyên).
+ * Quay thưởng tri ân: server rút thăm theo cấu hình đang hiệu lực (trúng thì giữ một móc khóa trong kho), rồi trừ lượt có điều kiện
+ * pendingGachaSpins >= 1 và ghi kết quả (qua outbox) trong MỘT lệnh nguyên tử → nhiều yêu cầu đồng thời không thể dùng chung một
+ * lượt. Lượt không trúng cũng được ghi. Không còn lượt thì trả móc khóa đã giữ; server dừng đúng lúc giữa hai bước chỉ làm kho hụt
+ * đi một móc khóa (không bao giờ phát vượt số lượng).
+ * Trả về null khi hết lượt, { unavailable: 'no_config' | 'out_of_stock' } khi không rút được (lượt được giữ nguyên), còn lại
+ * { outcome: 'win' | 'lose', prize, rewardId, configVersion, claimInstructions, pendingGachaSpins }.
  */
 export async function spinGacha(user) {
   if ((user.pendingGachaSpins || 0) < 1) return null;
   const config = await getActiveGachaConfig();
-  if (!config) return { unavailable: 'no_config' };
-  const reservation = await reservePrize(config);
-  if (!reservation) return { unavailable: 'out_of_stock' };
+  if (!isKeychainConfig(config)) return { unavailable: 'no_config' };
+  const draw = await drawFromConfig(config);
+  if (draw.unavailable) return draw;
 
-  const { prizeId, label, carrier, amountVnd } = reservation.prize;
-  const prize = { label, carrier, amountVnd, topUpCode: issueTopUpCode(amountVnd) };
   const rewardId = new mongoose.Types.ObjectId();
-  const entry = {
-    _id: rewardId,
-    studentId: user.studentId,
-    prizeType: GACHA_PRIZE_TYPE,
-    carrier,
-    amountVnd,
-    topUpCode: prize.topUpCode,
-    configId: config._id,
-    configVersion: config.version,
-    prizeId,
-    createdAt: new Date(),
+  const base = { _id: rewardId, studentId: user.studentId, configId: config._id, configVersion: config.version, createdAt: new Date() };
+  const won = draw.prize;
+  const prize = won && {
+    prizeId: won.prizeId,
+    label: won.label,
+    description: won.description || '',
+    imageId: won.imageId || null,
+    claimCode: issueClaimCode(),
   };
+  const entry = won
+    ? {
+        ...base,
+        outcome: 'win',
+        prizeType: GACHA_PRIZE_TYPE,
+        prizeId: prize.prizeId,
+        prizeLabel: prize.label,
+        imageId: prize.imageId,
+        claimCode: prize.claimCode,
+        deliveryStatus: 'pending',
+      }
+    : { ...base, outcome: 'lose' };
 
   const updated = await User.findOneAndUpdate(
     { _id: user._id, status: { $ne: 'locked' }, pendingGachaSpins: { $gte: 1 } },
@@ -191,12 +222,19 @@ export async function spinGacha(user) {
     { new: true }
   );
   if (!updated) {
-    await reservation.release();
+    await draw.release?.();
     return null;
   }
 
   await flushQuietly(user._id, 'gachaOutbox');
-  return { prize, rewardId, configVersion: config.version, pendingGachaSpins: updated.pendingGachaSpins };
+  return {
+    outcome: won ? 'win' : 'lose',
+    prize,
+    rewardId,
+    configVersion: config.version,
+    claimInstructions: config.claimInstructions || '',
+    pendingGachaSpins: updated.pendingGachaSpins,
+  };
 }
 
 /** Bản ghi đã chuyển + bản ghi còn trong outbox (nếu lần chuyển trước lỗi) — người dùng luôn thấy đủ */

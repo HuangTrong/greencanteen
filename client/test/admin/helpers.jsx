@@ -48,19 +48,37 @@ export const USER_DETAIL = {
   pendingGachaSpins: 1,
   plasticSavedGrams: 36,
   updatedAt: '2026-09-02T08:00:00.000Z',
-  counts: { validCheckIns: 3, invalidCheckIns: 1, rewards: 2, sessions: 1 },
+  counts: { validCheckIns: 3, invalidCheckIns: 1, spins: 5, rewards: 2, sessions: 1 },
   mfaEnrolled: false,
 };
 
+export const MEDIA = {
+  id: 'aaaaaaaaaaaaaaaaaaaaaaaa',
+  kind: 'keychain',
+  name: 'Lá xanh',
+  active: true,
+  url: '/api/gacha/media/aaaaaaaaaaaaaaaaaaaaaaaa',
+  width: 200,
+  height: 200,
+  bytes: 1234,
+  animated: false,
+  createdByLabel: 'ad***@example.edu.vn',
+  updatedByLabel: '',
+  createdAt: '2026-10-30T08:00:00.000Z',
+  updatedAt: '2026-10-30T08:00:00.000Z',
+};
+
 export const PRIZE = {
-  prizeId: 'topup-10k',
-  label: 'Mã nạp điện thoại',
-  prizeType: 'phone_topup',
-  carrier: 'Viettel',
-  amountVnd: 10_000,
-  probabilityPpm: 1_000_000,
+  prizeId: 'la-xanh',
+  label: 'Lá xanh',
+  prizeType: 'keychain',
+  legacy: false,
+  description: 'Móc khóa hình lá',
+  imageId: MEDIA.id,
+  imageUrl: MEDIA.url,
+  probabilityPpm: 1_000,
   enabled: true,
-  maxQuantity: null,
+  maxQuantity: 100,
 };
 
 export const GACHA_DRAFT = {
@@ -69,8 +87,10 @@ export const GACHA_DRAFT = {
   revision: 0,
   status: 'draft',
   isCurrent: false,
+  legacy: false,
   prizes: [PRIZE],
   budgetVnd: null,
+  claimInstructions: 'Nhận tại quầy căn tin tầng 1.',
   effectiveFrom: null,
   effectiveTo: null,
   note: '',
@@ -83,6 +103,8 @@ export const GACHA_DRAFT = {
   createdAt: '2026-10-30T08:00:00.000Z',
   updatedAt: '2026-10-30T08:00:00.000Z',
   issued: [],
+  spins: { total: 0, wins: 0, losses: 0 },
+  usage: [{ prizeId: 'la-xanh', used: 4 }],
   budgetUsedVnd: 0,
 };
 
@@ -111,14 +133,14 @@ export const STORY = {
 export const OVERVIEW = {
   range: { from: '2026-10-01', to: '2026-10-03', granularity: 'day', timezone: 'Asia/Ho_Chi_Minh', utcOffset: '+07:00' },
   generatedAt: '2026-10-03T05:00:00.000Z',
-  totals: { accountsTotal: 120, accountsLocked: 2, accountsNew: 5, checkInsValid: 40, checkInsInvalid: 7, checkInsSimulated: 0, gachaSpins: 30, rewardFaceValueVnd: 450_000 },
+  totals: { accountsTotal: 120, accountsLocked: 2, accountsNew: 5, checkInsValid: 40, checkInsInvalid: 7, checkInsSimulated: 0, gachaSpins: 30, gachaWins: 3 },
   rewardsByAmount: [{ amountVnd: 10_000, count: 30, faceValueVnd: 300_000 }],
   series: [
-    { period: '2026-10-01', accountsNew: 1, checkInsValid: 10, checkInsInvalid: 1, gachaSpins: 8, rewardFaceValueVnd: 80_000, pageViews: null, visits: null, activeUsers: null },
-    { period: '2026-10-02', accountsNew: 2, checkInsValid: 25, checkInsInvalid: 2, gachaSpins: 12, rewardFaceValueVnd: 120_000, pageViews: 0, visits: 0, activeUsers: 0 },
-    { period: '2026-10-03', accountsNew: 2, checkInsValid: 5, checkInsInvalid: 4, gachaSpins: 10, rewardFaceValueVnd: 250_000, pageViews: 15, visits: 6, activeUsers: 3 },
+    { period: '2026-10-01', accountsNew: 1, checkInsValid: 10, checkInsInvalid: 1, gachaSpins: 8, gachaWins: 1, pageViews: null, visits: null, activeUsers: null },
+    { period: '2026-10-02', accountsNew: 2, checkInsValid: 25, checkInsInvalid: 2, gachaSpins: 12, gachaWins: 0, pageViews: 0, visits: 0, activeUsers: 0 },
+    { period: '2026-10-03', accountsNew: 2, checkInsValid: 5, checkInsInvalid: 4, gachaSpins: 10, gachaWins: 2, pageViews: 15, visits: 6, activeUsers: 3 },
   ],
   traffic: { status: 'disabled', enabled: false, totals: null, clickThrough: [], retentionDays: 90, collectingSince: null, activeUsersAvailable: false },
-  financial: { status: 'no_data_source', revenueVnd: null, costVnd: null, profitVnd: null, note: 'Mệnh giá giải Gacha không được tính là doanh thu.' },
+  financial: { status: 'no_data_source', revenueVnd: null, costVnd: null, profitVnd: null, note: 'Móc khóa và mã nạp demo trước đây không được tính là doanh thu hay chi phí.' },
   definitions: [{ key: 'checkInsValid', label: 'Check-in hợp lệ', unit: 'lượt', source: 'Collection checkins', definition: 'Lượt ảnh đạt ngưỡng.' }],
 };

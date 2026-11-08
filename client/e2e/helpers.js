@@ -183,6 +183,10 @@ async function waitForMailLink(request, email, pattern, after) {
 export const waitForResetLink = (request, email, { after = 0 } = {}) =>
   waitForMailLink(request, email, /https?:\/\/\S+#reset=[A-Za-z0-9_-]{43}/, after);
 
+/** Đọc mã 6 số trong thư đặt lại mật khẩu (cùng thư với liên kết) */
+export const waitForResetCode = async (request, email, { after = 0 } = {}) =>
+  (await waitForMailLink(request, email, /Mã đặt lại mật khẩu \(hiệu lực 30 phút\): \d{6}/, after)).slice(-6);
+
 /** Đọc liên kết xác minh email từ hộp thư giả của server E2E */
 export const waitForVerifyLink = (request, email, { after = 0 } = {}) =>
   waitForMailLink(request, email, /https?:\/\/\S+#verify=[A-Za-z0-9_-]{43}/, after);

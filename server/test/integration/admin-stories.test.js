@@ -110,6 +110,39 @@ describe('kiểm tra dữ liệu', () => {
     assert.ok((await create({ ...COMPLETE(), imageUrl: 'http://example.org/a.jpg' })).data.fields.imageUrl);
   });
 
+  // SEC-04: ảnh câu chuyện được trình duyệt của mọi sinh viên tải; URL trỏ vào mạng nội bộ biến họ thành công cụ gửi request vào đó
+  test('SEC-04: URL ảnh và nguồn trỏ vào mạng nội bộ, chính máy, có tài khoản hay cổng lạ bị từ chối; tên miền công khai vẫn nhận', async () => {
+    const internal = [
+      'https://127.0.0.1/a.jpg',
+      'https://10.0.0.5/a.jpg',
+      'https://172.16.4.2/a.jpg',
+      'https://192.168.1.1/a.jpg',
+      'https://169.254.169.254/latest/meta-data/',
+      'https://100.64.0.1/a.jpg',
+      'https://[::1]/a.jpg',
+      'https://[fd00::1]/a.jpg',
+      'https://8.8.8.8/a.jpg',
+      'https://localhost/a.jpg',
+      'https://may-in/a.jpg',
+      'https://camera.local/a.jpg',
+      'https://wiki.intranet/a.jpg',
+      'https://nas.home.arpa/a.jpg',
+      'https://nguoi:mat-khau@example.org/a.jpg',
+      'https://example.org:8443/a.jpg',
+    ];
+    for (const url of internal) {
+      const image = await create({ ...COMPLETE(), imageUrl: url });
+      assert.equal(image.status, 400, url);
+      assert.ok(image.data.fields.imageUrl, url);
+      const source = await create({ ...COMPLETE(), source: { ...COMPLETE().source, url } });
+      assert.equal(source.status, 400, url);
+      assert.ok(source.data.fields['source.url'], url);
+    }
+    for (const url of ['https://example.org/a.jpg', 'https://upload.wikimedia.org/x/y.jpg', 'https://example.org:443/a.jpg']) {
+      assert.equal((await create({ ...COMPLETE(), imageUrl: url })).status, 201, url);
+    }
+  });
+
   test('slug sai định dạng hoặc trùng; slug không đổi được khi sửa', async () => {
     for (const slug of ['Có Dấu', 'a b', '-dau-gach', '', 'x'.repeat(81), { $ne: null }]) {
       assert.equal((await create({ ...COMPLETE(), slug })).status, 400, JSON.stringify(slug));

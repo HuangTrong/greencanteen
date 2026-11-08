@@ -1,4 +1,4 @@
-import { env, envFlag, isProduction } from './config.js';
+import { env, envFlag, envNumber, isProduction, isWildcardHost, listenHost } from './config.js';
 
 const isLoopbackHost = (host) => ['localhost', '127.0.0.1', '::1', '[::1]'].includes(host.toLowerCase());
 // clamd nói giao thức không mã hóa nên ảnh chỉ được đi trong máy này hoặc mạng nội bộ
@@ -16,15 +16,6 @@ function mongoProblem(uri) {
   return null;
 }
 
-function ollamaProblem(url) {
-  try {
-    const { protocol, hostname } = new URL(url);
-    return protocol === 'http:' && !isLoopbackHost(hostname) ? 'ảnh sinh viên đi qua HTTP không mã hóa tới máy khác' : null;
-  } catch {
-    return null;
-  }
-}
-
 /** Trả về các cấu hình làm yếu lớp vận chuyển hoặc để lộ dữ liệu. Chỉ có tên biến và lý do, không bao giờ có giá trị của biến */
 export function securityConfigProblems() {
   const problems = [];
@@ -37,13 +28,17 @@ export function securityConfigProblems() {
   if (!/^https:\/\//i.test(env('CLIENT_ORIGIN'))) add('CLIENT_ORIGIN', 'cần địa chỉ https: liên kết trong email và CORS đọc từ biến này');
   if (env('COOKIE_SECURE').toLowerCase() === 'false') add('COOKIE_SECURE', 'cookie phiên có thể đi qua HTTP');
   if (envFlag('SMTP_ALLOW_PLAINTEXT')) add('SMTP_ALLOW_PLAINTEXT', 'liên kết đặt lại mật khẩu có thể đi qua SMTP không mã hóa');
-  const ollama = ollamaProblem(env('VISION_OLLAMA_URL'));
-  if (ollama) add('VISION_OLLAMA_URL', ollama);
   const mongo = mongoProblem(env('MONGODB_URI'));
   if (mongo) add('MONGODB_URI', mongo);
   const clamav = env('CLAMAV_HOST');
   if (!clamav) add('CLAMAV_HOST', 'ảnh tải lên chưa được quét mã độc');
   else if (!isPrivateHost(clamav)) add('CLAMAV_HOST', 'clamd không mã hóa nên chỉ được đặt trong máy này hoặc mạng nội bộ');
+  if (isWildcardHost(listenHost())) {
+    add('HOST', 'API nhận kết nối trực tiếp trên mọi địa chỉ mạng: chặn cổng bằng tường lửa, hoặc đặt HOST=127.0.0.1 khi proxy chạy cùng máy');
+  }
+  // Mặc định của mã là 30 phút và 3 lượt/ngày; đặt 0 là tắt hẳn, mở đường cày điểm, lượt quay và móc khóa thật (SEC-02)
+  if (envNumber('CHECKIN_COOLDOWN_MINUTES', 30) <= 0) add('CHECKIN_COOLDOWN_MINUTES', 'không có thời gian chờ giữa hai lượt check-in được thưởng');
+  if (envNumber('CHECKIN_DAILY_MAX', 3) <= 0) add('CHECKIN_DAILY_MAX', 'không giới hạn số lượt check-in được thưởng mỗi ngày');
   return problems;
 }
 

@@ -210,7 +210,7 @@ export default function StoryEditorPage() {
         <aside aria-label="Xem trước" className="xl:sticky xl:top-4 xl:self-start">
           <p className="mb-2 text-sm font-extrabold text-stone-800">Xem trước như trên điện thoại</p>
           <div className="overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-sm">
-            <StoryHeader key={preview.imageUrl} story={preview} />
+            <StoryHeader key={preview.imageUrl} story={preview} remoteImage={false} />
             <div className="space-y-3 p-5">
               <StoryBody story={preview} />
             </div>

@@ -76,6 +76,19 @@ export const adminApi = {
   publishGachaConfig: (id, revision) => post(`/gacha/configs/${id}/publish`, { revision }),
   endGachaConfig: (id) => post(`/gacha/configs/${id}/end`),
   discardGachaDraft: (id, revision) => post(`/gacha/configs/${id}/discard`, { revision }),
+  gachaMedia: (params) => adminRequest(`/gacha/media${toQuery(params)}`),
+  uploadGachaMedia: ({ kind, name, file }) => {
+    const fd = new FormData();
+    fd.append('kind', kind);
+    fd.append('name', name);
+    fd.append('image', file);
+    return adminRequest('/gacha/media', { method: 'POST', body: fd });
+  },
+  updateGachaMedia: (id, body) => patch(`/gacha/media/${id}`, body),
+  deleteGachaMedia: (id) => adminRequest(`/gacha/media/${id}`, { method: 'DELETE' }),
+  gachaRewards: (params) => adminRequest(`/gacha/rewards${toQuery(params)}`),
+  deliverGachaReward: (id, note) => post(`/gacha/rewards/${id}/deliver`, { note }),
+  undeliverGachaReward: (id, reason) => post(`/gacha/rewards/${id}/undeliver`, { reason }),
 
   siteSettings: () => adminRequest('/site-settings'),
   updateSiteSettings: (body) => put('/site-settings', body),

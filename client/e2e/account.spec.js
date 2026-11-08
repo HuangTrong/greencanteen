@@ -1,6 +1,6 @@
 // Kiểm thử hệ thống: tài khoản — đăng ký có xác minh email, đăng nhập, quên/đặt lại mật khẩu (hộp thư giả), đổi mật khẩu, nhiều thiết bị, QR
 import { expect, test } from '@playwright/test';
-import { activate, login, logout, openLogin, register, submitRegistration, waitForResetLink, waitForVerifyLink } from './helpers';
+import { activate, login, logout, openLogin, register, submitRegistration, waitForResetCode, waitForResetLink, waitForVerifyLink } from './helpers';
 
 test('đăng ký: chờ xác minh, đăng nhập trước khi xác minh bị từ chối, token bị xóa khỏi URL, liên kết dùng lại bị từ chối', async ({ page, request, browser }) => {
   const sentAt = Date.now() - 1000;
@@ -66,7 +66,7 @@ test('quên mật khẩu → liên kết trong email → đặt mật khẩu m�
   const forgot = page.getByRole('dialog', { name: 'Quên mật khẩu' });
   await forgot.getByLabel('Email *').fill(account.email);
   const sentAt = Date.now() - 1000;
-  await forgot.getByRole('button', { name: 'Gửi liên kết đặt lại' }).click();
+  await forgot.getByRole('button', { name: 'Gửi email đặt lại' }).click();
   await expect(forgot.getByText(/Nếu email này thuộc một tài khoản GreenCanteen/)).toBeVisible();
 
   const link = await waitForResetLink(request, account.email, { after: sentAt });
@@ -90,6 +90,32 @@ test('quên mật khẩu → liên kết trong email → đặt mật khẩu m�
   await again.getByRole('button', { name: 'Lưu mật khẩu mới' }).click();
   await expect(again.getByRole('alert')).toContainText('không hợp lệ, đã hết hạn hoặc đã được sử dụng');
   await other.close();
+});
+
+test('quên mật khẩu → nhập mã 6 số trong email ngay trong popup → đăng nhập bằng mật khẩu mới', async ({ page, request }) => {
+  const account = await register(page);
+  await logout(page);
+  const dialog = await openLogin(page);
+  await dialog.getByRole('button', { name: 'Quên mật khẩu?' }).click();
+  const forgot = page.getByRole('dialog', { name: 'Quên mật khẩu' });
+  await forgot.getByLabel('Email *').fill(account.email);
+  const sentAt = Date.now() - 1000;
+  await forgot.getByRole('button', { name: 'Gửi email đặt lại' }).click();
+  await expect(forgot.getByRole('status')).toContainText('mã 6 số và liên kết');
+
+  const code = await waitForResetCode(request, account.email, { after: sentAt });
+  // Dán như chép từ thư, có dấu cách giữa hai nhóm số
+  await forgot.getByLabel('Mã 6 số trong email *').fill(`${code.slice(0, 3)} ${code.slice(3)}`);
+  await expect(forgot.getByLabel('Mã 6 số trong email *')).toHaveValue(code);
+  await forgot.getByLabel('Mật khẩu mới (ít nhất 8 ký tự) *').fill('mat-khau-ma-e2e-1');
+  await forgot.getByLabel('Nhập lại mật khẩu mới *').fill('mat-khau-ma-e2e-1');
+  await forgot.getByRole('button', { name: 'Lưu mật khẩu mới' }).click();
+  await expect(page.getByRole('dialog').getByText('Đã đặt mật khẩu mới')).toBeVisible();
+  await expect(page.getByText(`MSSV ${account.studentId}`)).toBeVisible();
+
+  await logout(page);
+  const ok = await login(page, account.email, 'mat-khau-ma-e2e-1');
+  await expect(ok.getByText('Đăng nhập thành công')).toBeVisible();
 });
 
 test('đổi mật khẩu đăng xuất thiết bị khác, giữ thiết bị hiện tại', async ({ page, browser }) => {

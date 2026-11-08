@@ -78,7 +78,13 @@ export default function AuthModal({ initialView = 'methods', initialError = '', 
         {view === 'verify-email' && (
           <VerifyEmailView token={verifyToken} onSuccess={finish} onRequestNew={() => setView('verify-resend')} onBack={() => setView('methods')} />
         )}
-        {view === 'forgot' && <ForgotPasswordView onBack={() => setView('methods')} />}
+        {view === 'forgot' && (
+          <ForgotPasswordView
+            onBack={() => setView('methods')}
+            onSuccess={(user) => finish(user, 'Đã đặt mật khẩu mới')}
+            onMfaRequired={() => setView('mfa')}
+          />
+        )}
         {view === 'reset' && (
           <ResetPasswordView
             token={resetToken}
@@ -210,7 +216,11 @@ function MethodsView({ initialError, notice, onQr, onForgot, onResend, onRegiste
       <p className="text-center text-[11px] text-stone-500">
         Khi đăng nhập hoặc tạo tài khoản, dữ liệu của bạn được xử lý theo{' '}
         <a href="/privacy.html" target="_blank" rel="noopener" className="font-bold text-leaf-700 underline underline-offset-2">
-          Chính sách quyền riêng tư
+          Chính sách bảo mật và xử lý dữ liệu cá nhân
+        </a>
+        . Xem thêm{' '}
+        <a href="/terms.html" target="_blank" rel="noopener" className="font-bold text-leaf-700 underline underline-offset-2">
+          Điều khoản sử dụng
         </a>
         .
       </p>
@@ -586,14 +596,15 @@ function VerifyEmailView({ token, onSuccess, onRequestNew, onBack }) {
   );
 }
 
-function ForgotPasswordView({ onBack }) {
+function ForgotPasswordView({ onBack, onSuccess, onMfaRequired }) {
   const { loading, error: providersError, providers } = useAuthProviders();
   const [email, setEmail] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [sent, setSent] = useState(null); // { message, devConsole }
+  const [sent, setSent] = useState(null); // { message, devConsole, codeLength }
 
   const available = providers.passwordReset?.enabled;
+  const withCode = providers.passwordReset?.code;
 
   const submit = async (e) => {
     e.preventDefault();
@@ -601,7 +612,7 @@ function ForgotPasswordView({ onBack }) {
     setBusy(true);
     try {
       const r = await withCaptcha((captcha) => api.forgotPassword(email, captcha));
-      setSent({ message: r.message, devConsole: r.devConsole });
+      setSent({ message: r.message, devConsole: r.devConsole, codeLength: r.codeLength || 0 });
     } catch (err) {
       setError(err.message || 'Không gửi được yêu cầu.');
     } finally {
@@ -632,17 +643,28 @@ function ForgotPasswordView({ onBack }) {
     );
   }
 
+  if (sent?.codeLength) {
+    return (
+      <ResetCodeForm
+        email={email}
+        {...sent}
+        onResent={(r) => setSent((s) => ({ ...s, message: `${r.message} Mã và liên kết trong email trước (nếu có) không còn dùng được.`, devConsole: r.devConsole }))}
+        onChangeEmail={() => setSent(null)}
+        onBack={onBack}
+        onSuccess={onSuccess}
+        onMfaRequired={onMfaRequired}
+      />
+    );
+  }
+
+  // Máy chủ chưa có khóa cho mã: thư chỉ có liên kết
   if (sent) {
     return (
       <div className="space-y-3">
         <div role="status" className="rounded-xl bg-leaf-50 px-3 py-3 text-sm font-semibold text-leaf-900">
           ✉️ {sent.message}
         </div>
-        {sent.devConsole && (
-          <p className="rounded-xl bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
-            Chế độ phát triển: email được ghi vào log máy chủ, không gửi thật.
-          </p>
-        )}
+        <DevConsoleNote show={sent.devConsole} />
         <p className="text-xs text-stone-500">Không thấy email? Kiểm tra thư mục Spam, hoặc gửi lại sau vài phút.</p>
         <BackButton onClick={onBack} label="← Quay lại đăng nhập" />
       </div>
@@ -652,7 +674,9 @@ function ForgotPasswordView({ onBack }) {
   return (
     <form onSubmit={submit} className="space-y-3">
       <p className="text-sm text-stone-600">
-        Nhập email của tài khoản. Nếu email đã đăng ký, bạn sẽ nhận được liên kết đặt mật khẩu mới (hiệu lực 30 phút).
+        {withCode
+          ? 'Nhập email của tài khoản. Nếu email đã đăng ký, bạn sẽ nhận được mã 6 số và liên kết để đặt mật khẩu mới (hiệu lực 30 phút).'
+          : 'Nhập email của tài khoản. Nếu email đã đăng ký, bạn sẽ nhận được liên kết đặt mật khẩu mới (hiệu lực 30 phút).'}
       </p>
       {error && (
         <p role="alert" className="rounded-xl bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
@@ -671,10 +695,159 @@ function ForgotPasswordView({ onBack }) {
       />
       <button type="submit" disabled={busy} className={primaryButtonClass}>
         {busy && <Spinner />}
-        {busy ? 'Đang gửi...' : 'Gửi liên kết đặt lại'}
+        {busy ? 'Đang gửi...' : 'Gửi email đặt lại'}
       </button>
       <BackButton onClick={onBack} label="← Quay lại đăng nhập" />
     </form>
+  );
+}
+
+/** Đã gửi thư có mã: nhập mã + mật khẩu mới ngay trong popup. Liên kết trong cùng thư vẫn dùng được thay cho mã */
+function ResetCodeForm({ email, message, devConsole, codeLength, onResent, onChangeEmail, onBack, onSuccess, onMfaRequired }) {
+  const [form, setForm] = useState({ code: '', password: '', confirm: '' });
+  const [busy, setBusy] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [error, setError] = useState('');
+  // Vừa gửi xong: chờ một lúc rồi mới cho gửi lại, tránh bấm liên tục làm mã trong thư trước mất hiệu lực
+  const [cooldown, setCooldown] = useState(RESEND_COOLDOWN_SECONDS);
+
+  useEffect(() => {
+    if (!cooldown) return undefined;
+    const timer = setTimeout(() => setCooldown((seconds) => seconds - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [cooldown]);
+
+  const onChange = (e) => {
+    const { name, value } = e.target;
+    // Dán "123 456" hay "123-456" từ thư vẫn ra đúng mã
+    setForm((f) => ({ ...f, [name]: name === 'code' ? value.replace(/\D/g, '').slice(0, codeLength) : value }));
+  };
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setError('');
+    if (form.code.length !== codeLength) {
+      setError(`Mã gồm ${codeLength} chữ số.`);
+      return;
+    }
+    if (form.password !== form.confirm) {
+      setError('Hai mật khẩu chưa khớp nhau.');
+      return;
+    }
+    setBusy(true);
+    try {
+      const { user, mfaRequired } = await api.resetPasswordWithCode(email, form.code, form.password);
+      if (mfaRequired) onMfaRequired();
+      else onSuccess(user);
+    } catch (err) {
+      if (err.code === 'reset_code_invalid') setForm((f) => ({ ...f, code: '' }));
+      setError(err.message || 'Không đặt lại được mật khẩu.');
+      setBusy(false);
+    }
+  };
+
+  const resend = async () => {
+    setError('');
+    setResending(true);
+    try {
+      const r = await withCaptcha((captcha) => api.forgotPassword(email, captcha));
+      onResent(r);
+      setForm((f) => ({ ...f, code: '' }));
+      setCooldown(RESEND_COOLDOWN_SECONDS);
+    } catch (err) {
+      setError(err.message || 'Không gửi được yêu cầu.');
+    } finally {
+      setResending(false);
+    }
+  };
+
+  const locked = busy || resending;
+
+  return (
+    <form onSubmit={submit} className="space-y-3">
+      <div role="status" className="rounded-xl bg-leaf-50 px-3 py-3 text-sm font-semibold text-leaf-900">
+        ✉️ {message}
+      </div>
+      <DevConsoleNote show={devConsole} />
+      <p className="text-xs text-stone-500">
+        Nhập mã trong email gửi tới <span className="font-bold text-stone-700">{email}</span>, hoặc mở liên kết trong email đó. Không thấy email? Kiểm
+        tra thư mục Spam.
+      </p>
+      {error && (
+        <p role="alert" className="rounded-xl bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+          {error}
+        </p>
+      )}
+      <TextField
+        label={`Mã ${codeLength} số trong email *`}
+        name="code"
+        required
+        autoFocus
+        inputMode="numeric"
+        autoComplete="one-time-code"
+        className="text-center font-mono text-lg tracking-[0.4em]"
+        value={form.code}
+        onChange={onChange}
+        disabled={locked}
+      />
+      <TextField
+        label="Mật khẩu mới (ít nhất 8 ký tự) *"
+        name="password"
+        type="password"
+        required
+        minLength={8}
+        maxLength={128}
+        autoComplete="new-password"
+        value={form.password}
+        onChange={onChange}
+        disabled={locked}
+      />
+      <TextField
+        label="Nhập lại mật khẩu mới *"
+        name="confirm"
+        type="password"
+        required
+        minLength={8}
+        maxLength={128}
+        autoComplete="new-password"
+        value={form.confirm}
+        onChange={onChange}
+        disabled={locked}
+      />
+      <p className="text-[11px] text-stone-500">Sau khi đổi, mọi thiết bị đang đăng nhập sẽ bị đăng xuất.</p>
+      <button type="submit" disabled={locked} className={primaryButtonClass}>
+        {busy && <Spinner />}
+        {busy ? 'Đang lưu...' : 'Lưu mật khẩu mới'}
+      </button>
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={resend}
+          disabled={locked || cooldown > 0}
+          className="rounded-xl border border-leaf-200 py-2 text-xs font-bold text-leaf-800 transition hover:bg-leaf-50 disabled:opacity-60"
+        >
+          {resending ? 'Đang gửi...' : cooldown > 0 ? `Gửi lại mã sau ${cooldown} giây` : 'Gửi lại mã'}
+        </button>
+        <button
+          type="button"
+          onClick={onChangeEmail}
+          disabled={locked}
+          className="rounded-xl border border-stone-200 py-2 text-xs font-bold text-stone-600 transition hover:bg-stone-50 disabled:opacity-60"
+        >
+          Đổi email
+        </button>
+      </div>
+      <BackButton onClick={onBack} label="← Quay lại đăng nhập" />
+    </form>
+  );
+}
+
+function DevConsoleNote({ show }) {
+  if (!show) return null;
+  return (
+    <p className="rounded-xl bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+      Chế độ phát triển: email được ghi vào log máy chủ, không gửi thật.
+    </p>
   );
 }
 

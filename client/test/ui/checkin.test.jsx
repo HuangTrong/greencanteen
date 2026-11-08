@@ -5,7 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { USER, deferred, json, mockApi, renderApp } from '../helpers';
 
-const STATUS = { mode: 'local', engine: 'clip', threshold: 0.8, maxImageBytes: 8 * 1024 * 1024, acceptedTypes: ['image/jpeg', 'image/png', 'image/webp'], cooldownMinutes: 0 };
+const STATUS = { mode: 'local', engine: 'classifier', threshold: 0.8, maxImageBytes: 8 * 1024 * 1024, acceptedTypes: ['image/jpeg', 'image/png', 'image/webp'], cooldownMinutes: 0 };
 const STORY = {
   slug: 'rua-bien',
   title: 'Rùa biển và nhựa',
@@ -63,10 +63,11 @@ describe('trạng thái dịch vụ nhận diện', () => {
     expect(screen.queryByRole('button', { name: 'Check-in ngay' })).not.toBeInTheDocument();
   });
 
-  test('bảng quyết định theo chế độ: local (CLIP / kết hợp) / simulated / unavailable / lỗi kiểm tra', async () => {
+  test('bảng quyết định theo chế độ: local (bộ phân loại) / simulated / unavailable / lỗi kiểm tra', async () => {
     const cases = [
-      [{ ...STATUS, cooldownMinutes: 30 }, /nhận diện ngay trên máy chủ của trường, không gửi cho dịch vụ bên ngoài.*từ 80% trở lên.*cách nhau ít nhất 30 phút/s, false],
-      [{ ...STATUS, engine: 'ensemble' }, /Hai bộ nhận diện phải cùng nhận ra bình\/ly cá nhân/, false],
+      [{ ...STATUS, cooldownMinutes: 30 }, /nhận diện ngay trên máy chủ GreenCanteen, không gửi cho dịch vụ AI bên ngoài.*từ 80% trở lên.*cách nhau ít nhất 30 phút/s, false],
+      // SEC-02: trần lượt được thưởng mỗi ngày do server báo
+      [{ ...STATUS, cooldownMinutes: 30, dailyMax: 3 }, /cách nhau ít nhất 30 phút\. Mỗi ngày được thưởng tối đa 3 lượt\./s, false],
       [{ ...STATUS, mode: 'simulated', engine: null }, /Chế độ mô phỏng/, false],
       [{ ...STATUS, mode: 'unavailable', engine: null }, /Máy chủ chưa sẵn sàng nhận diện ảnh/, true],
     ];
@@ -123,7 +124,7 @@ describe('gửi ảnh', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Check-in thành công' });
     expect(within(dialog).getByText('Rùa biển và nhựa')).toBeInTheDocument();
     expect(within(dialog).getByText('+10 Eco-points')).toBeInTheDocument();
-    expect(within(dialog).getByText(/Bạn đã nhận 1 lượt quay Gacha/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/Bạn nhận được 1 lượt quay thưởng tri ân/)).toBeInTheDocument();
     expect(api.callsTo('POST', '/api/checkin')[0].init.body.get('image').name).toBe('binh.png');
 
     await user.click(within(dialog).getByRole('button', { name: /Quay sau/ }));

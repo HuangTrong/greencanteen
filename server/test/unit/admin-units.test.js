@@ -1,4 +1,4 @@
-// Các phần thuần tính toán của khu quản trị: TOTP, mã hóa secret, che dữ liệu, chọn giải, khoảng báo cáo, kiểm tra cấu hình
+// Các phần thuần tính toán của khu quản trị: TOTP, mã hóa secret, che dữ liệu, rút thăm, khoảng báo cáo, kiểm tra cấu hình
 import { afterEach, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -7,7 +7,7 @@ import { adminIdleTimeoutMs, adminMfaKey, adminReauthWindowMs, adminSessionMaxMs
 import { parseReportRange } from '../../src/services/adminStats.js';
 import { AdminError, toAdminError } from '../../src/services/adminErrors.js';
 import { parsePaging, escapeRegex } from '../../src/services/adminQuery.js';
-import { DEFAULT_PRIZES, PROBABILITY_TOTAL_PPM, pickPrize, rollPhoneTopUpPrize } from '../../src/services/gacha.js';
+import { PROBABILITY_TOTAL_PPM, drawPrize, issueClaimCode, normalizeClaimCode, oneInN } from '../../src/services/gacha.js';
 import { normalizeConfigInput, validateForPublish } from '../../src/services/gachaConfig.js';
 import { maskEmail, maskStudentId } from '../../src/services/privacy.js';
 import { actorKeyFor, localDate, parseAnalyticsEvent } from '../../src/services/analytics.js';
@@ -137,39 +137,48 @@ describe('che dữ liệu cá nhân', () => {
   });
 });
 
-describe('chọn giải', () => {
-  test('bộ giải mặc định: mã giải không trùng, tổng đúng 100%', () => {
-    assert.equal(new Set(DEFAULT_PRIZES.map((p) => p.prizeId)).size, 12);
-    assert.equal(DEFAULT_PRIZES.reduce((sum, p) => sum + p.probabilityPpm, 0), PROBABILITY_TOTAL_PPM);
+describe('rút thăm quay thưởng tri ân', () => {
+  test('mẫu có xác suất 0 không bao giờ trúng; tổng 100% luôn trúng; tổng 0 luôn không trúng', () => {
+    const prizes = [{ prizeId: 'a', probabilityPpm: 0 }, { prizeId: 'b', probabilityPpm: PROBABILITY_TOTAL_PPM }];
+    for (let i = 0; i < 200; i += 1) assert.equal(drawPrize(prizes).prizeId, 'b');
+    assert.equal(drawPrize([]), null);
+    assert.equal(drawPrize([{ prizeId: 'a', probabilityPpm: 0 }]), null);
   });
 
-  test('giải có xác suất 0 không bao giờ được chọn; một giải duy nhất luôn được chọn', () => {
-    const prizes = [{ prizeId: 'a', probabilityPpm: 0 }, { prizeId: 'b', probabilityPpm: 5 }];
-    for (let i = 0; i < 200; i += 1) assert.equal(pickPrize(prizes).prizeId, 'b');
+  test('khoảng số của từng mẫu nối tiếp nhau theo thứ tự cấu hình; ngoài mọi khoảng là không trúng', () => {
+    const prizes = [{ prizeId: 'a', probabilityPpm: 10 }, { prizeId: 'b', probabilityPpm: 5 }];
+    const at = (value) => drawPrize(prizes, () => value)?.prizeId ?? null;
+    assert.deepEqual([at(0), at(9), at(10), at(14), at(15), at(999_999)], ['a', 'a', 'b', 'b', null, null]);
   });
 
-  test('chọn giải và tạo mã không dùng Math.random', () => {
+  test('rút thăm và tạo mã nhận quà không dùng Math.random', () => {
     const original = Math.random;
     Math.random = () => {
       throw new Error('Math.random không đủ an toàn cho kết quả có giá trị');
     };
     try {
-      assert.ok(pickPrize(DEFAULT_PRIZES));
-      assert.ok(rollPhoneTopUpPrize().topUpCode);
+      drawPrize([{ prizeId: 'a', probabilityPpm: 500_000 }]);
+      assert.match(issueClaimCode(), /^TA-[2-9A-HJKMNP-Z]{5}-[2-9A-HJKMNP-Z]{5}$/);
     } finally {
       Math.random = original;
     }
   });
 
-  test('danh sách rỗng hoặc tổng bằng 0 báo lỗi, không trả về giải giả', () => {
-    assert.throws(() => pickPrize([]));
-    assert.throws(() => pickPrize([{ prizeId: 'a', probabilityPpm: 0 }]));
+  test('mã nhận quà không trùng trong 5.000 lần tạo; chuẩn hóa mã người dùng gõ', () => {
+    assert.equal(new Set(Array.from({ length: 5000 }, issueClaimCode)).size, 5000);
+    assert.equal(normalizeClaimCode(' ta-abcde - fghjk '), 'TA-ABCDE-FGHJK');
+    assert.equal(normalizeClaimCode({ $ne: null }), '');
+  });
+
+  test('cách nói "1 trên N"', () => {
+    assert.deepEqual([oneInN(1), oneInN(100), oneInN(333_333), oneInN(0)], [1_000_000, 10_000, 3, null]);
   });
 });
 
-describe('kiểm tra cấu hình Gacha', () => {
+describe('kiểm tra cấu hình quay thưởng', () => {
   const now = new Date('2026-06-01T00:00:00Z');
-  const prize = (probabilityPpm, extra = {}) => ({ prizeId: 'a', enabled: true, amountVnd: 10_000, probabilityPpm, ...extra });
+  const prize = (probabilityPpm, extra = {}) => ({ prizeId: 'a', prizeType: 'keychain', enabled: true, imageId: 'x', maxQuantity: 10, probabilityPpm, ...extra });
+  const config = (prizes, extra = {}) => ({ prizes, claimInstructions: 'Nhận ở quầy', ...extra });
   const fieldsOf = (fn) => {
     try {
       fn();
@@ -180,28 +189,35 @@ describe('kiểm tra cấu hình Gacha', () => {
     return null;
   };
 
-  test('giá trị biên của tổng xác suất', () => {
-    assert.equal(fieldsOf(() => validateForPublish({ prizes: [prize(1_000_000)] }, now)), null);
-    assert.ok(fieldsOf(() => validateForPublish({ prizes: [prize(999_999)] }, now)).probabilityTotal);
-    assert.ok(fieldsOf(() => validateForPublish({ prizes: [prize(1_000_001)] }, now)).probabilityTotal);
+  test('giá trị biên của tổng xác suất: tối đa 100%, dưới 100% là có phần không trúng', () => {
+    assert.equal(fieldsOf(() => validateForPublish(config([prize(1_000_000)]), now)), null);
+    assert.equal(fieldsOf(() => validateForPublish(config([prize(1)]), now)), null);
+    assert.ok(fieldsOf(() => validateForPublish(config([prize(1_000_001)]), now)).probabilityTotal);
+    assert.ok(fieldsOf(() => validateForPublish(config([prize(600_000), prize(400_001, { prizeId: 'b' })]), now)).probabilityTotal);
   });
 
   test('để trống thời điểm bắt đầu nghĩa là áp dụng ngay; hẹn giờ giữ đúng mốc', () => {
-    assert.equal(validateForPublish({ prizes: [prize(1_000_000)] }, now), now);
+    assert.equal(validateForPublish(config([prize(1_000)]), now), now);
     const later = new Date(now.getTime() + 3_600_000);
-    assert.equal(validateForPublish({ prizes: [prize(1_000_000)], effectiveFrom: later }, now), later);
+    assert.equal(validateForPublish(config([prize(1_000)], { effectiveFrom: later }), now), later);
   });
 
-  test('ngân sách đúng bằng giải rẻ nhất được nhận, nhỏ hơn 1 đồng bị từ chối', () => {
-    assert.equal(fieldsOf(() => validateForPublish({ prizes: [prize(1_000_000)], budgetVnd: 10_000 }, now)), null);
-    assert.ok(fieldsOf(() => validateForPublish({ prizes: [prize(1_000_000)], budgetVnd: 9_999 }, now)).budgetVnd);
+  test('số lượng phải lớn hơn số đã trúng; thiếu ảnh, thiếu hướng dẫn nhận quà, còn giải mã nạp cũ bị từ chối', () => {
+    const usage = new Map([['a', 10]]);
+    assert.match(fieldsOf(() => validateForPublish(config([prize(1_000)]), now, usage))['prizes.0.maxQuantity'], /Đã trúng 10/);
+    assert.equal(fieldsOf(() => validateForPublish(config([prize(1_000, { maxQuantity: 11 })]), now, usage)), null);
+    assert.ok(fieldsOf(() => validateForPublish(config([prize(1_000, { imageId: null })]), now))['prizes.0.imageId']);
+    assert.ok(fieldsOf(() => validateForPublish(config([prize(1_000)], { claimInstructions: ' ' }), now)).claimInstructions);
+    assert.ok(fieldsOf(() => validateForPublish(config([prize(1_000, { prizeType: 'phone_topup' })]), now))['prizes.0.label']);
   });
 
-  test('chuẩn hóa: trường lạ bị bỏ, chuỗi được cắt khoảng trắng, loại giải luôn là mã nạp', () => {
-    const { prizes } = normalizeConfigInput({
-      prizes: [{ prizeId: ' a ', label: ' Tên ', carrier: ' Viettel ', amountVnd: 10_000, probabilityPpm: 1, enabled: true, prizeType: 'tien-mat', hack: true }],
+  test('chuẩn hóa: trường lạ bị bỏ, chuỗi được cắt khoảng trắng, loại giải luôn là móc khóa, ngân sách luôn trống', () => {
+    const { prizes, budgetVnd } = normalizeConfigInput({
+      prizes: [{ prizeId: ' a ', label: ' Tên ', description: ' Mô tả ', imageId: ' 0123456789abcdef01234567 ', probabilityPpm: 1, maxQuantity: 3, enabled: true, prizeType: 'tien-mat', carrier: 'Viettel', amountVnd: 10_000, hack: true }],
+      budgetVnd: 50_000,
     });
-    assert.deepEqual(prizes[0], { prizeId: 'a', label: 'Tên', prizeType: 'phone_topup', carrier: 'Viettel', amountVnd: 10_000, probabilityPpm: 1, enabled: true, maxQuantity: null });
+    assert.deepEqual(prizes[0], { prizeId: 'a', label: 'Tên', prizeType: 'keychain', description: 'Mô tả', imageId: '0123456789abcdef01234567', probabilityPpm: 1, enabled: true, maxQuantity: 3 });
+    assert.equal(budgetVnd, null);
   });
 });
 

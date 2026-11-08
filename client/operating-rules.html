@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#16a34a" />
+    <meta name="description" content="Quy chế hoạt động của GreenCanteen: vai trò các bên, quy tắc check-in, Eco-points, huy hiệu, bảng xếp hạng, quay thưởng tri ân và xử lý vi phạm." />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="stylesheet" href="/src/index.css" />
+    <title>Quy chế hoạt động · GreenCanteen</title>
+  </head>
+  <body class="bg-leaf-50 antialiased">
+    <div class="mx-auto flex min-h-dvh max-w-lg flex-col bg-gradient-to-b from-leaf-50 to-white">
+      <header class="border-b border-leaf-100/80 bg-white/90 px-4 py-3">
+        <a href="/" class="flex items-center gap-2">
+          <span class="flex h-9 w-9 items-center justify-center rounded-xl bg-leaf-600 text-lg text-white shadow-sm" aria-hidden="true">🌿</span>
+          <span class="text-lg font-extrabold tracking-tight text-leaf-800">GreenCanteen</span>
+        </a>
+      </header>
+
+      <main class="legal flex-1 px-4 pb-10 pt-6">
+        <h1>Quy chế hoạt động</h1>
+        <p>Cập nhật lần cuối: 07/11/2026</p>
+        <p>
+          Quy chế này mô tả cách GreenCanteen vận hành: ai tham gia, khi nào check-in được thưởng, điểm và thứ hạng được tính thế nào, và
+          vi phạm được xử lý ra sao. Các con số dưới đây là giá trị đang dùng trong mã nguồn; giá trị có ghi "mặc định" do máy chủ cấu
+          hình và được hiển thị ở trang Check-in khi áp dụng.
+        </p>
+
+        <h2>1. Các bên tham gia</h2>
+        <ul>
+          <li><strong>Người dùng:</strong> học sinh, sinh viên có tài khoản GreenCanteen.</li>
+          <li>
+            <strong>Quản trị viên:</strong> quản lý tài khoản (khóa, mở khóa, sửa mã sinh viên sau khi xác minh, hỗ trợ xác thực hai lớp),
+            câu chuyện khoa học, cấu hình quay thưởng tri ân, ảnh móc khóa, việc trao quà và nội dung hiển thị của trang. Quản trị viên phải đăng nhập bằng xác thực hai lớp; thao tác
+            nhạy cảm phải xác thực lại; mọi thao tác được ghi vào nhật ký kiểm toán.
+          </li>
+        </ul>
+        <p class="legal-pending" data-pending="operator">
+          <strong>Chưa công bố.</strong> Không đủ dữ liệu để xác minh đơn vị vận hành GreenCanteen và đơn vị chỉ định quản trị viên.
+        </p>
+
+        <h2>2. Check-in</h2>
+        <h3>Được thưởng khi</h3>
+        <ul>
+          <li>
+            Ảnh được nhận diện là bình nước hoặc ly, cốc cá nhân tái sử dụng với độ tin cậy từ ngưỡng của máy chủ trở lên (mặc định 80%).
+          </li>
+          <li>
+            Ảnh sắp được thưởng còn được xét lại sau khi làm mờ chữ trong ảnh và vẫn phải đạt ngưỡng, để kết quả không chỉ dựa vào chữ
+            viết.
+          </li>
+        </ul>
+        <h3>Không được thưởng khi</h3>
+        <ul>
+          <li>Ảnh có ly nhựa dùng một lần, vật chứa khác, không có vật chứa, hoặc không đủ rõ.</li>
+          <li>Ảnh trùng với ảnh đã được thưởng trước đó, kể cả khi tệp bị sửa nhưng điểm ảnh không đổi.</li>
+          <li>Chưa hết thời gian chờ giữa hai lần được thưởng, nếu máy chủ có đặt thời gian chờ.</li>
+          <li>Tài khoản đang bị khóa.</li>
+        </ul>
+        <h3>Giới hạn</h3>
+        <ul>
+          <li>Mỗi tài khoản gửi tối đa 20 ảnh check-in mỗi giờ.</li>
+          <li>Ảnh tối đa 8 MB theo mặc định.</li>
+          <li>Lần check-in bị từ chối không bị trừ điểm nhưng vẫn được ghi lại (kết quả nhận diện, mã băm ảnh) để chống gian lận.</li>
+        </ul>
+
+        <h2>3. Eco-points và huy hiệu</h2>
+        <p>Mỗi check-in hợp lệ: +10 Eco-points, +1 lượt quay thưởng tri ân, +12 g nhựa ước tính và một câu chuyện khoa học.</p>
+        <div class="legal-table">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Huy hiệu</th>
+                <th scope="col">Điều kiện</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Ngụm đầu tiên xanh</td>
+                <td>1 check-in hợp lệ</td>
+              </tr>
+              <tr>
+                <td>Khởi động xanh</td>
+                <td>5 check-in hợp lệ</td>
+              </tr>
+              <tr>
+                <td>Chiến binh sinh thái</td>
+                <td>20 check-in hợp lệ</td>
+              </tr>
+              <tr>
+                <td>Người bảo vệ hành tinh</td>
+                <td>50 check-in hợp lệ</td>
+              </tr>
+              <tr>
+                <td>100 điểm sinh thái</td>
+                <td>Đạt 100 Eco-points</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Huy hiệu đã nhận không bị thu hồi. Eco-points không quy đổi được thành tiền, hàng hóa hay lượt quay.</p>
+
+        <h2>4. Bảng xếp hạng</h2>
+        <ul>
+          <li>Hiển thị 20 người có nhiều check-in hợp lệ nhất trong 7 ngày hoặc 30 ngày gần nhất; bằng nhau thì xét tổng điểm.</li>
+          <li>Hiển thị họ tên, ảnh đại diện, số check-in và điểm trong kỳ. Không hiển thị mã sinh viên hay email.</li>
+          <li>Tài khoản bị khóa không hiện trên bảng xếp hạng.</li>
+          <li>Số liệu có thể chậm vài giây vì được lưu tạm (mặc định 15 giây, tối đa 5 phút).</li>
+        </ul>
+
+        <h2>5. Quay thưởng tri ân</h2>
+        <p>
+          Mỗi check-in hợp lệ được 1 lượt quay. Quà là móc khóa; trúng hay không hoàn toàn do may mắn. Cách rút thăm, mẫu móc khóa, xác
+          suất, số lượng còn lại và cách nhận quà xem <a href="/gacha-rules.html">Thể lệ quay thưởng tri ân</a>.
+        </p>
+
+        <h2>6. Câu chuyện khoa học</h2>
+        <p>
+          Sau mỗi check-in hợp lệ, GreenCanteen hiện ngẫu nhiên một câu chuyện đã được quản trị viên xuất bản, kèm nguồn nghiên cứu. Quản
+          trị viên soạn nháp và xuất bản câu chuyện trong khu quản trị.
+        </p>
+
+        <h2>7. Xử lý vi phạm</h2>
+        <ul>
+          <li>
+            Khi có hành vi bị cấm theo <a href="/terms.html">Điều khoản sử dụng</a>, quản trị viên có thể khóa tài khoản và ghi lý do. Tài
+            khoản bị khóa bị đăng xuất khỏi mọi thiết bị.
+          </li>
+          <li>Phản đối việc khóa tài khoản gửi theo trang <a href="/complaints.html">Tiếp nhận và giải quyết khiếu nại, tranh chấp</a>.</li>
+          <li>GreenCanteen chưa có chức năng cộng, trừ điểm thủ công.</li>
+        </ul>
+
+        <h2>8. Thanh toán, giao nhận, đổi trả, hoàn tiền và kiểm hàng</h2>
+        <div class="legal-table">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Chính sách</th>
+                <th scope="col">Tình trạng</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Thanh toán</td>
+                <td>Chưa áp dụng</td>
+              </tr>
+              <tr>
+                <td>Giao nhận, vận chuyển</td>
+                <td>Chưa áp dụng</td>
+              </tr>
+              <tr>
+                <td>Đổi trả, hoàn tiền</td>
+                <td>Chưa áp dụng</td>
+              </tr>
+              <tr>
+                <td>Kiểm hàng</td>
+                <td>Chưa áp dụng</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          GreenCanteen không bán hàng hóa, không cung cấp dịch vụ có thu phí, không nhận đơn hàng, không thu tiền và không giao hàng, nên
+          không có các chính sách trên.
+        </p>
+
+        <h2>9. Thay đổi quy chế</h2>
+        <p>Khi cách vận hành thay đổi, nội dung trang này và ngày cập nhật ở đầu trang được sửa theo.</p>
+      </main>
+      <!--legal-footer-->
+    </div>
+    <script type="module" src="/src/legalPage.js"></script>
+  </body>
+</html>

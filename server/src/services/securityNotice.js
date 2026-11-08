@@ -8,7 +8,7 @@ const ADMIN_ADVICE = 'Nếu không phải bạn hoặc đồng nghiệp đã bi�
 // Nội dung cố định, không có liên kết và không có dữ liệu do người dùng nhập: thư báo không được trở thành khuôn mẫu cho thư giả mạo
 const NOTICES = {
   password_changed: ['Mật khẩu GreenCanteen vừa được đổi', 'Mật khẩu tài khoản GreenCanteen của bạn vừa được đổi.', ADVICE],
-  password_reset: ['Mật khẩu GreenCanteen vừa được đặt lại', 'Mật khẩu tài khoản GreenCanteen của bạn vừa được đặt lại qua liên kết trong email.', ADVICE],
+  password_reset: ['Mật khẩu GreenCanteen vừa được đặt lại', 'Mật khẩu tài khoản GreenCanteen của bạn vừa được đặt lại bằng mã hoặc liên kết trong email đặt lại mật khẩu.', ADVICE],
   google_linked: ['Google vừa được liên kết với GreenCanteen', 'Một tài khoản Google vừa được liên kết để đăng nhập vào tài khoản GreenCanteen của bạn.', ADVICE],
   facebook_linked: ['Facebook vừa được liên kết với GreenCanteen', 'Một tài khoản Facebook vừa được liên kết để đăng nhập vào tài khoản GreenCanteen của bạn.', ADVICE],
   google_unlinked: ['Google vừa bị hủy liên kết khỏi GreenCanteen', 'Tài khoản Google không còn đăng nhập được vào tài khoản GreenCanteen của bạn.', ADVICE],

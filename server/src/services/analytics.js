@@ -23,6 +23,9 @@ const VISIT_ID = /^[a-z0-9-]{16,40}$/i;
 
 export const analyticsEnabled = () => envFlag('ANALYTICS_ENABLED');
 export const analyticsRetentionDays = () => envNumber('ANALYTICS_RETENTION_DAYS', 90, { min: 7, max: 395 });
+// SEC-07: sự kiện không cần đăng nhập. Trần số sự kiện mỗi lượt truy cập (30 phút) và số lượt truy cập mới mỗi IP (10 phút)
+export const analyticsEventsPerVisit = () => envNumber('ANALYTICS_EVENTS_PER_VISIT', 120, { min: 1, max: 10_000 });
+export const analyticsVisitsPerIp = () => envNumber('ANALYTICS_VISITS_PER_IP', 600, { min: 1, max: 100_000 });
 
 /**
  * Mã ẩn danh của tài khoản, đổi theo tháng báo cáo (giờ Việt Nam) để không theo dấu được một người lâu dài.

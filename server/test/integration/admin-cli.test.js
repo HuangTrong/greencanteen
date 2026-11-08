@@ -25,7 +25,7 @@ import { User } from '../../src/models/User.js';
 import { UserAvatar } from '../../src/models/UserAvatar.js';
 import { UserMfa } from '../../src/models/UserMfa.js';
 import { WebauthnChallenge } from '../../src/models/WebauthnChallenge.js';
-import { USER_DATA_MODELS } from '../../src/services/accountDeletion.js';
+import { ANONYMIZED_USER_MODELS, USER_DATA_MODELS } from '../../src/services/accountDeletion.js';
 import { verifyPassword } from '../../src/services/password.js';
 import { setEnv } from '../helpers.js';
 
@@ -224,7 +224,8 @@ test('delete-user: mọi model có userId đều nằm trong danh sách xóa, k�
   const models = path.resolve(path.dirname(entry), 'models');
   await Promise.all(fs.readdirSync(models).map((file) => import(pathToFileURL(path.join(models, file)).href)));
   const withUserId = mongoose.modelNames().filter((name) => mongoose.model(name).schema.path('userId'));
-  assert.deepEqual(USER_DATA_MODELS.map((model) => model.modelName).sort(), withUserId.sort());
+  // Mỗi model gắn với tài khoản phải được xóa, hoặc (ảnh đã thưởng, SEC-06) được giữ lại ở dạng không còn gắn với tài khoản
+  assert.deepEqual([...USER_DATA_MODELS, ...ANONYMIZED_USER_MODELS].map((model) => model.modelName).sort(), withUserId.sort());
 });
 
 test('delete-user: gõ sai mã sinh viên, không gõ gì, thiếu hoặc thừa tham số, không tìm thấy: không xóa gì', async () => {
@@ -259,12 +260,18 @@ test('delete-user: tài khoản chỉ có Facebook xóa được theo mã SV; m�
 
   const res = await runCli(['delete-user', '--student-id', target.studentId.toLowerCase()], { input: `${target.studentId}\n` });
   assert.equal(res.code, 0, res.output);
-  assert.match(res.output, /1 lượt check-in, 1 mã nạp/);
+  assert.match(res.output, /1 lượt check-in, 1 kết quả quay thưởng/);
   assert.match(res.output, /email \(không có\)/);
 
   assert.equal(await User.exists({ _id: target._id }), null);
   assert.deepEqual(await countAll(target._id), USER_DATA_MODELS.map(() => 0));
   assert.deepEqual(await countAll(kept._id), USER_DATA_MODELS.map(() => 1));
+  // SEC-06: dấu ảnh đã thưởng ở lại để ảnh đó không được thưởng lần nữa, nhưng không còn chỉ tới tài khoản đã xóa
+  const anonymized = await RewardedImage.findById('bam-xoa').lean();
+  assert.ok(anonymized, 'dấu ảnh đã thưởng vẫn còn');
+  assert.equal(anonymized.userId, undefined);
+  assert.ok(anonymized.accountDeletedAt instanceof Date);
+  assert.equal(String((await RewardedImage.findById('bam-giu-lai').lean()).userId), String(kept._id), 'tài khoản khác không bị đụng');
   const audit = await AuditLog.findOne({ action: 'account.deleted' }).lean();
   assert.equal(audit.actorType, 'cli');
   assert.equal(audit.targetId, target._id.toString());

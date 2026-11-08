@@ -11,11 +11,12 @@ import {
   classifyContainerImage,
   visionConfig,
 } from '../services/vision.js';
-import { ACCEPTED_IMAGE_TYPES, inspectImage, pixelFingerprint, sha256 } from '../services/image.js';
+import { RewardedImage } from '../models/RewardedImage.js';
+import { ACCEPTED_IMAGE_TYPES, imageFingerprints, inspectImage, sha256 } from '../services/image.js';
 import { blockUnsafeUpload } from '../services/malwareScan.js';
 import { POINTS_PER_CHECKIN } from '../services/gamification.js';
 import { getSchoolStats } from '../services/stats.js';
-import { grantCheckInReward, listWithOutbox } from '../services/rewards.js';
+import { findNearDuplicate, grantCheckInReward, listWithOutbox } from '../services/rewards.js';
 import { pickRandomStory, serializeStory } from '../services/stories.js';
 import { createRateLimiter, tooManyRequests } from '../services/rateLimit.js';
 import { serializeUser } from '../services/accounts.js';
@@ -26,10 +27,22 @@ export const uploadDir = path.join(__dirname, '../../uploads');
 fs.mkdirSync(uploadDir, { recursive: true });
 
 const maxImageBytes = () => envNumber('CHECKIN_MAX_IMAGE_MB', 8, { min: 1, max: 20 }) * 1024 * 1024;
-const cooldownMs = () => envNumber('CHECKIN_COOLDOWN_MINUTES', 0, { min: 0, max: 24 * 60 }) * 60 * 1000;
+// SEC-02: mặc định 30 phút giữa hai lượt được thưởng và tối đa 3 lượt được thưởng mỗi ngày (giờ Việt Nam). 0 = tắt (chỉ nên dùng khi
+// phát triển; production đặt 0 thì log khởi động cảnh báo)
+const cooldownMs = () => envNumber('CHECKIN_COOLDOWN_MINUTES', 30, { min: 0, max: 24 * 60 }) * 60 * 1000;
+const dailyMax = () => envNumber('CHECKIN_DAILY_MAX', 3, { min: 0, max: 50 });
 
-// Mỗi lần gửi ảnh tốn một lượt gọi AI → giới hạn theo tài khoản
+const DAY_MS = 24 * 60 * 60 * 1000;
+const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
+/** Ngày theo giờ Việt Nam (YYYY-MM-DD) và số ms tới nửa đêm kế tiếp */
+const vnDay = (now = Date.now()) => new Date(now + VN_OFFSET_MS).toISOString().slice(0, 10);
+const msUntilVnMidnight = (now = Date.now()) => DAY_MS - ((now + VN_OFFSET_MS) % DAY_MS);
+
+// Mỗi lần gửi ảnh tốn một lượt nhận diện → giới hạn theo tài khoản
 const attemptLimiter = createRateLimiter({ name: 'checkin-attempt', max: 20, windowMs: 60 * 60 * 1000 });
+// Lượt được thưởng trong ngày: khóa gồm tài khoản và ngày, cửa sổ hết lúc nửa đêm (giờ Việt Nam)
+const dailyRewards = createRateLimiter({ name: 'checkin-daily', max: () => dailyMax(), windowMs: () => msUntilVnMidnight() });
+const dailyKey = (user) => `${user._id}:${vnDay()}`;
 
 async function limitAttempts(req, res, next) {
   try {
@@ -107,7 +120,6 @@ function publicClassification(result, threshold) {
     reason: result.reason,
     simulated: result.status === 'simulated',
     accepted: result.accepted,
-    ...(result.engines && { engines: result.engines.map(({ engine, category, confidence }) => ({ engine, category, confidence })) }),
   };
 }
 
@@ -115,9 +127,6 @@ function publicClassification(result, threshold) {
 const FAILURE_HTTP_STATUS = { not_configured: 503, busy: 503, invalid_image: 400 };
 
 function rejectionMessage(result, threshold) {
-  if (result.disagreement) {
-    return 'Hai bộ nhận diện tại máy chủ chưa thống nhất về vật chứa trong ảnh. Hãy chụp lại rõ bình/ly cá nhân, đủ sáng.';
-  }
   if (result.textDependent) {
     return 'Kết quả nhận diện phụ thuộc vào chữ trong ảnh nên chưa xác nhận được. Hãy chụp lại rõ hình dáng bình/ly cá nhân, tránh để nhãn hoặc chữ chiếm phần lớn ảnh.';
   }
@@ -151,6 +160,14 @@ const DUPLICATE_IMAGE = {
   code: 'duplicate_image',
 };
 
+function dailyLimitResponse(res) {
+  res.set('Retry-After', String(Math.max(1, Math.ceil(msUntilVnMidnight() / 1000))));
+  return res.status(429).json({
+    error: `Hôm nay bạn đã nhận đủ ${dailyMax()} lượt check-in được thưởng. Hẹn bạn ngày mai!`,
+    code: 'checkin_daily_limit',
+  });
+}
+
 const router = Router();
 
 /** Client hỏi trước: check-in có khả dụng không, có đang ở chế độ mô phỏng không, giới hạn ảnh */
@@ -163,6 +180,7 @@ router.get('/status', (_req, res) => {
     maxImageBytes: maxImageBytes(),
     acceptedTypes: ACCEPTED_IMAGE_TYPES,
     cooldownMinutes: Math.round(cooldownMs() / 60000),
+    dailyMax: dailyMax(),
   });
 });
 
@@ -200,9 +218,17 @@ router.post('/', requireAuth, limitAttempts, uploadImage, async (req, res) => {
     if (cooldown > 0 && user.lastRewardedCheckInAt && Date.now() - user.lastRewardedCheckInAt.getTime() < cooldown) {
       return cooldownResponse(res, user.lastRewardedCheckInAt, cooldown);
     }
-    // Trùng ảnh xét theo điểm ảnh: nối thêm byte vào tệp không biến ảnh cũ thành ảnh mới. Bản ghi cũ lưu băm theo byte nên đối chiếu cả hai
-    const imageSha256 = (await pixelFingerprint(buffer)) ?? fileHash;
-    if (await CheckIn.exists({ imageSha256: { $in: [imageSha256, fileHash] }, valid: true })) return res.status(409).json(DUPLICATE_IMAGE);
+    if (dailyMax() > 0 && (await dailyRewards.isLimited(dailyKey(user)))) return dailyLimitResponse(res);
+    // Trùng ảnh xét theo điểm ảnh: nối thêm byte vào tệp không biến ảnh cũ thành ảnh mới. Bản ghi cũ lưu băm theo byte nên đối chiếu cả
+    // hai; ảnh của tài khoản đã xóa chỉ còn ở RewardedImage (SEC-06). Gần trùng (nén lại, thu nhỏ, đổi định dạng) xét bằng dấu gần đúng
+    const prints = await imageFingerprints(buffer);
+    const imageSha256 = prints?.exact ?? fileHash;
+    const perceptual = prints?.perceptual ?? null;
+    const known = { $in: [imageSha256, fileHash] };
+    if ((await CheckIn.exists({ imageSha256: known, valid: true })) || (await RewardedImage.exists({ _id: known }))) {
+      return res.status(409).json(DUPLICATE_IMAGE);
+    }
+    if (await findNearDuplicate(user._id, perceptual)) return res.status(409).json(DUPLICATE_IMAGE);
 
     const result = await classifyContainerImage({ buffer, mimeType: image.mimeType }, cfg);
     const classification = publicClassification(result, cfg.threshold);
@@ -242,13 +268,29 @@ router.post('/', requireAuth, limitAttempts, uploadImage, async (req, res) => {
       });
     }
 
-    const story = await pickRandomStory();
-    const grant = await grantCheckInReward(user, {
-      classification: result,
-      imageSha256,
-      storySlug: story?.slug,
-      cooldownMs: cooldown,
-    });
+    // Giữ một lượt trong trần của ngày trước khi cộng thưởng: hit() nguyên tử nên nhiều ảnh gửi đồng thời không vượt trần.
+    // Không được thưởng (trùng ảnh, thời gian chờ, bị khóa, lỗi) thì trả lượt
+    const daily = dailyMax() > 0 ? dailyKey(user) : null;
+    if (daily && (await dailyRewards.hit(daily))) {
+      await dailyRewards.release(daily);
+      return dailyLimitResponse(res);
+    }
+    let story;
+    let grant;
+    try {
+      story = await pickRandomStory();
+      grant = await grantCheckInReward(user, {
+        classification: result,
+        imageSha256,
+        perceptual,
+        storySlug: story?.slug,
+        cooldownMs: cooldown,
+      });
+    } catch (err) {
+      if (daily) await dailyRewards.release(daily).catch(() => {});
+      throw err;
+    }
+    if (grant.rejected && daily) await dailyRewards.release(daily);
     if (grant.rejected === 'duplicate_image') return res.status(409).json(DUPLICATE_IMAGE);
     if (grant.rejected === 'locked') {
       return res.status(403).json({ error: 'Tài khoản này đang bị khóa.', code: 'account_locked' });

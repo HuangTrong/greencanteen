@@ -161,8 +161,9 @@ export default function UserDetailPage() {
             <Row label="Check-in hợp lệ">{formatNumber(user.counts.validCheckIns)}</Row>
             <Row label="Check-in không hợp lệ">{formatNumber(user.counts.invalidCheckIns)}</Row>
             <Row label="Eco-points">{formatNumber(user.ecoPoints)}</Row>
-            <Row label="Lượt Gacha còn lại">{formatNumber(user.pendingGachaSpins)}</Row>
-            <Row label="Phần thưởng đã nhận">{formatNumber(user.counts.rewards)}</Row>
+            <Row label="Lượt quay thưởng còn lại">{formatNumber(user.pendingGachaSpins)}</Row>
+            <Row label="Lượt quay thưởng đã có kết quả">{formatNumber(user.counts.spins)}</Row>
+            <Row label="Lượt trúng quà">{formatNumber(user.counts.rewards)}</Row>
             <Row label="Phiên đang mở">{formatNumber(user.counts.sessions)}</Row>
           </dl>
         </Card>

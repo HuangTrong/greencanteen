@@ -22,6 +22,10 @@ import statsRoutes from '../../src/routes/stats.js';
 import { syncStories } from '../../src/services/stories.js';
 import { createClient, realFetch, registerUser, setEnv, startTestServer, uniqueSuffix } from '../helpers.js';
 import { ADMIN_ENV, enrolledAdmin } from '../adminHelpers.js';
+import { blockNonLoopbackEgress } from '../egressGuard.js';
+
+// Lớp chặn thứ hai ở tầng socket + DNS (ngoài fetch bị thay bên dưới): bắt cả SMTP, clamd, http nếu có route nào gọi ra ngoài
+let egress;
 
 const MOUNTS = [
   ['/api/auth/qr', qrAuthRoutes],
@@ -92,6 +96,7 @@ before(async () => {
     if (String(url).startsWith('http://127.0.0.1')) return realFetch(url, init);
     throw new Error(`Chặn request ra ngoài trong test: ${url}`);
   };
+  egress = blockNonLoopbackEgress();
   const c = createClient(ctx.base);
   const res = await registerUser(c, { studentId: `MUCTIEU${uniqueSuffix()}` });
   assert.equal(res.status, 201);
@@ -103,6 +108,7 @@ before(async () => {
   admin = await enrolledAdmin(ctx.base);
 });
 after(async () => {
+  egress?.restore();
   globalThis.fetch = realFetch;
   await ctx.stop();
 });
@@ -116,7 +122,7 @@ describe('quét tự động mọi route', () => {
   test('danh sách route đủ rộng để phép quét có ý nghĩa', () => {
     const routes = listRoutes();
     assert.ok(routes.length >= 60, `${routes.length} route`);
-    for (const path of ['/api/auth/login', '/api/checkin', '/api/gacha/spin', '/api/admin/users/:id/status', '/api/admin/stories', '/api/admin/gacha/configs/:id/publish']) {
+    for (const path of ['/api/auth/login', '/api/checkin', '/api/gacha/draw', '/api/gacha/spin', '/api/admin/users/:id/status', '/api/admin/stories', '/api/admin/gacha/configs/:id/publish', '/api/admin/gacha/media', '/api/admin/gacha/rewards/:id/deliver']) {
       assert.ok(routes.some(([, route]) => route === path), path);
     }
   });
@@ -247,7 +253,8 @@ describe('sau khi quét: dữ liệu không bị phá, không có quyền trái 
 describe('mã hóa tống tiền: bề mặt phá hoại dữ liệu qua API', () => {
   test('chỉ có đúng các route DELETE đã biết: không route nào xóa tài khoản, check-in hay nhật ký', () => {
     const deletes = listRoutes().filter(([method]) => method === 'DELETE').map(([, route]) => route).sort();
-    assert.deepEqual(deletes, ['/api/auth/passkeys/:id', '/api/auth/providers/:provider', '/api/auth/signup/pending', '/api/avatars/me']);
+    // Ảnh quay thưởng là nội dung của quản trị viên (cần phiên quản trị, CSRF, có nhật ký), không phải dữ liệu người dùng
+    assert.deepEqual(deletes, ['/api/admin/gacha/media/:id', '/api/auth/passkeys/:id', '/api/auth/providers/:provider', '/api/auth/signup/pending', '/api/avatars/me']);
   });
 
   test('tệp tải lên không được phục vụ, không có đường dẫn vượt thư mục', async () => {
@@ -293,5 +300,12 @@ describe('đánh cắp dữ liệu cá nhân qua API', () => {
         assert.ok(!text.toUpperCase().includes(other.studentId.toUpperCase()), `${route} lộ mã sinh viên`);
       }
     }
+  });
+});
+
+// Chạy sau cùng: cả ma trận payload ở ba vai trò không làm máy chủ mở kết nối nào rời máy (SSRF, gọi nhầm dịch vụ ngoài)
+describe('A10: sau khi quét, không có kết nối ra ngoài', () => {
+  test('không có kết nối TCP hay truy vấn DNS nào tới máy ngoài loopback trong cả tệp', () => {
+    assert.deepEqual(egress.attempts, []);
   });
 });

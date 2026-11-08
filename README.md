@@ -1,7 +1,7 @@
 # GreenCanteen
 
 Nền tảng web (PWA) giúp học sinh/sinh viên **check-in** việc dùng bình/ly nước cá nhân tại căn tin thay cho ly nhựa dùng một lần.
-Sinh viên chụp ảnh bình/ly, **máy chủ của trường** tự nhận diện ảnh (không gửi cho dịch vụ AI cloud), hợp lệ thì được cộng Eco-points và một lượt quay Gacha.
+Sinh viên chụp ảnh bình/ly, **máy chủ của trường** tự nhận diện ảnh (không gửi cho dịch vụ AI cloud), hợp lệ thì được cộng Eco-points và một lượt quay thưởng tri ân (quà là móc khóa, trúng hay không do may mắn).
 
 README này hướng dẫn **cài đặt, chạy, sử dụng và triển khai**. Giải thích từng biến môi trường nằm trong [`server/.env.example`](server/.env.example).
 
@@ -26,13 +26,12 @@ Trình duyệt (React + Vite + Tailwind, PWA)
         │  HTTPS / REST — phiên đăng nhập bằng cookie httpOnly
         ▼
 Node.js + Express API  (cổng 3001)
-        ├── MongoDB                      lưu tài khoản, check-in, Gacha, câu chuyện, nhật ký kiểm toán...
+        ├── MongoDB                      lưu tài khoản, check-in, quay thưởng, câu chuyện, nhật ký kiểm toán...
         ├── Google / Facebook OAuth      tùy chọn
         ├── SMTP                         xác minh đăng ký, quên mật khẩu (tùy chọn nhưng cần để đăng ký bằng email)
         ├── ClamAV (clamd)               quét mã độc ảnh tải lên (tùy chọn, nên có ở production)
         └── Nhận diện ảnh check-in TẠI MÁY CHỦ
-              ├── CLIP (ONNX, chạy trong tiến trình Node, ngoại tuyến)
-              └── Ollama VLM trong mạng nội bộ (kết hợp với CLIP ở chế độ ensemble)
+              └── Bộ phân loại ONNX (engine `classifier`, onnxruntime-node trong tiến trình Node, chỉ dùng CPU, ngoại tuyến)
 ```
 
 **Cấu trúc thư mục**
@@ -43,7 +42,7 @@ greencanteen/
 ├── server/    API Express + Mongoose
 │   ├── src/        mã nguồn (routes, services, models, data/stories.json)
 │   ├── scripts/    công cụ: dev server, tải/kiểm/đánh giá mô hình nhận diện
-│   ├── models/     mô hình CLIP tải về bằng npm run vision:download (không đưa vào git)
+│   ├── models/     mô hình nhận diện ảnh (ONNX) tải về bằng npm run vision:download (không đưa vào git)
 │   └── uploads/    thư mục tạm cho ảnh đang xử lý
 ├── tools/     script cài đặt (setup.mjs), công cụ đo độ phủ C2 dùng cho test
 ├── setup.cmd  cài đặt tự động trên Windows
@@ -51,7 +50,7 @@ greencanteen/
 ```
 
 **Tính năng chính:** thống kê toàn trường, đăng nhập (email + mật khẩu, Google, Facebook, mã QR, passkey, xác thực hai lớp),
-check-in bằng camera/ảnh, Gacha, bảng xếp hạng tuần/tháng, popup câu chuyện khoa học có nguồn, khu quản trị `/admin` (MFA bắt buộc).
+check-in bằng camera/ảnh, quay thưởng tri ân (móc khóa), bảng xếp hạng tuần/tháng, popup câu chuyện khoa học có nguồn, khu quản trị `/admin` (MFA bắt buộc).
 
 ## 2. Yêu cầu
 
@@ -62,8 +61,7 @@ check-in bằng camera/ảnh, Gacha, bảng xếp hạng tuần/tháng, popup c�
 | Trình duyệt | Chrome hoặc Edge: mở trang web, chạy test E2E |
 | Ứng dụng xác thực | Google Authenticator, Microsoft Authenticator... trên điện thoại, để bật MFA khi vào khu quản trị |
 | MongoDB | Bản cài local (trên Windows, `npm run setup` tự cài) hoặc MongoDB Atlas. Khi phát triển có thể dùng DB in-memory (xem [mục 4](#4-chạy-thử-nhanh-không-cần-mongodb)) |
-| Nhận diện ảnh | ~150 MB đĩa cho mô hình CLIP, ~350 MB RAM thêm cho tiến trình server |
-| Ollama (tùy chọn) | ≥ 0.12.7, mô hình `qwen3-vl:4b-instruct` (~3,3 GB đĩa, ~5,2 GB RAM hoặc VRAM khi chạy), nên có GPU ([mục 8.2](#82-ollama-nhận-diện-ảnh)). **Bắt buộc ở production**, vì `VISION_ENGINE=ensemble` cần cả CLIP lẫn Ollama |
+| Nhận diện ảnh | Bộ phân loại ONNX (engine `classifier`, [mục 6.2](#62-bộ-phân-loại-onnx-engine-classifier)) chạy trong tiến trình server, chỉ dùng CPU, không cần GPU: 8–22 MB đĩa, ~80–90 MB RAM thêm |
 | Hệ điều hành | Windows, macOS, Linux (máy chủ production khuyến nghị Linux) |
 
 ## 3. Cài đặt
@@ -80,14 +78,13 @@ npm run setup
 |---|---|
 | Thư viện | `npm ci` cho `server` và `client` nếu chưa có `node_modules` |
 | `server/.env` | Tạo từ `.env.example` nếu chưa có |
-| Mô hình CLIP | Tải ~150 MB vào `server/models/`, kiểm mã băm |
+| Mô hình nhận diện ảnh | Tải bộ phân loại ONNX (~8 MB) vào `server/models/`, kiểm mã băm |
 | MongoDB (chỉ Windows) | Tải bản 8.0.34 (~808 MB, ghim mã băm), cài vào `D:\MongoDB` (không có ổ D thì vào thư mục người dùng), chỉ nghe `127.0.0.1`, tạo tài khoản, ghi `MONGODB_URI`. Không cần quyền Administrator, không cài dịch vụ Windows |
 | Khóa quản trị | Sinh `ADMIN_MFA_KEY` nếu chưa có |
-| Ollama | Tải `qwen3-vl:4b-instruct` (~3,3 GB) nếu đã cài và đang chạy Ollama. Script không tự cài Ollama |
 
 Mật khẩu và khóa chỉ ghi vào tệp, không in ra màn hình: chuỗi kết nối ứng dụng và `ADMIN_MFA_KEY` ở `server/.env`, chuỗi kết nối root ở `mongodb-admin.txt` trong thư mục cài MongoDB. Cuối cùng script in danh sách việc bạn còn phải tự làm.
 
-Tùy chọn: `--mongo-dir <thư mục>`, `--mongo-port <cổng>`, `--skip-mongodb` (dùng MongoDB có sẵn hoặc Atlas), `--skip-ollama`. Truyền qua npm: `npm run setup -- --skip-ollama`.
+Tùy chọn: `--mongo-dir <thư mục>`, `--mongo-port <cổng>`, `--skip-mongodb` (dùng MongoDB có sẵn hoặc Atlas). Truyền qua npm: `npm run setup -- --skip-mongodb`.
 
 ### Cài thủ công
 
@@ -112,7 +109,7 @@ cp server/.env.example server/.env
 Copy-Item server\.env.example server\.env
 ```
 
-Tải mô hình nhận diện ảnh (một lần, ~150 MB, vào `server/models/`, có kiểm mã băm):
+Tải mô hình nhận diện ảnh (một lần, ~8 MB, vào `server/models/`, có kiểm mã băm):
 
 ```bash
 cd server
@@ -137,7 +134,7 @@ npm run setup
 
 Trên Windows có thể bấm đúp `setup.cmd` thay cho `npm run setup`. Trên macOS/Linux script không tự cài MongoDB: cài MongoDB Community (chuỗi mặc định `mongodb://127.0.0.1:27017/greencanteen` dùng được ngay) hoặc tạo cluster Atlas rồi đặt `MONGODB_URI` trong `server/.env`. Sau đó tạo admin đầu tiên ([mục 7.3](#73-quản-trị-viên)) và chạy như [mục 5](#5-chạy-môi-trường-phát-triển).
 
-Mỗi máy có DB, mật khẩu và khóa riêng do `setup` sinh ra; dữ liệu và tài khoản không đi theo GitHub. Khóa Google/Facebook phải điền lại vào `server/.env` của máy đó, không gửi tệp `.env` qua tin nhắn hay email. Máy chưa có SMTP hoặc Ollama thì xem [mục 4](#4-chạy-thử-nhanh-không-cần-mongodb) để in email ra log và dùng check-in mô phỏng khi chạy thử.
+Mỗi máy có DB, mật khẩu và khóa riêng do `setup` sinh ra; dữ liệu và tài khoản không đi theo GitHub. Khóa Google/Facebook phải điền lại vào `server/.env` của máy đó, không gửi tệp `.env` qua tin nhắn hay email. Máy chưa có SMTP hoặc chưa tải mô hình nhận diện thì xem [mục 4](#4-chạy-thử-nhanh-không-cần-mongodb) để in email ra log và dùng check-in mô phỏng khi chạy thử.
 
 ## 4. Chạy thử nhanh (không cần MongoDB)
 
@@ -165,7 +162,7 @@ MongoDB cài bằng `npm run setup` không tự chạy sau khi khởi động l�
 | Giao diện | `npm run dev:client` | http://localhost:5173 (proxy `/api` → 3001) |
 
 - Server tự khởi động lại khi tệp trong `server/src/` thực sự đổi nội dung.
-- Mỗi lần khởi động, server dọn tệp tạm, chạy migration, đồng bộ câu chuyện (`server/src/data/stories.json`), bảo đảm có cấu hình Gacha, rồi in ra phương thức nào đang tắt / đang mô phỏng.
+- Mỗi lần khởi động, server dọn tệp tạm, chạy migration, đồng bộ câu chuyện (`server/src/data/stories.json`), rồi in ra phương thức nào đang tắt / đang mô phỏng. Chưa có phiên bản móc khóa nào đang hiệu lực thì log báo quay thưởng tri ân đang tạm dừng: server không tự tạo cấu hình vì ảnh, số lượng và nơi nhận quà phải do quản trị viên nhập.
 - Chỉ chạy **một** server API trên cổng 3001 cho mỗi thư mục dự án.
 - Muốn thử trên điện thoại cùng mạng LAN (ví dụ thử mã QR): `npm run dev --prefix client -- --host`.
 
@@ -181,6 +178,7 @@ Lệnh khác của server (chạy trong `server/`):
 | `npm run admin:delete-user -- --student-id <mã SV>` | Xóa hẳn một tài khoản theo yêu cầu của chủ tài khoản, xem [mục 7.3](#73-quản-trị-viên). Có thể dùng `--email <email>` thay cho mã SV |
 | `npm run claim-code -- <mã SV> [số giờ]` | Cấp mã kích hoạt cho tài khoản cũ (tạo từ luồng cũ) |
 | `npm run vision:download` / `vision:verify` / `vision:evaluate` | Tải, kiểm tra, đánh giá bộ nhận diện ảnh bằng ảnh thật |
+| `npm run vision:benchmark` | Đo tốc độ / RAM bộ nhận diện trên máy đang chạy (xem [mục 6.2](#62-bộ-phân-loại-onnx-engine-classifier)) |
 
 ## 6. Cấu hình `server/.env`
 
@@ -192,6 +190,7 @@ Các biến cần quan tâm nhất:
 |---|---|
 | `NODE_ENV` | `development` hoặc `production`. Production chặn mọi chế độ mô phỏng, email console và DB in-memory |
 | `PORT` | Cổng API, mặc định `3001` |
+| `HOST` | Địa chỉ lắng nghe, mặc định `127.0.0.1` (chỉ Nginx / Vite trên cùng máy gọi được API). Container, Docker, Render: `0.0.0.0`; production ghi cảnh báo để nhắc chỉ mở cổng API qua proxy |
 | `MONGODB_URI` | Chuỗi kết nối MongoDB, mặc định `mongodb://127.0.0.1:27017/greencanteen` |
 | `CLIENT_ORIGIN` | Địa chỉ giao diện (dùng cho CORS và điều hướng sau đăng nhập). Production: tên miền HTTPS cuối cùng, vì passkey gắn với tên miền này |
 | `TRUST_PROXY` | Địa chỉ reverse proxy đứng trước server (vd. `loopback`). **Không** dùng `true` hay `*` |
@@ -199,14 +198,18 @@ Các biến cần quan tâm nhất:
 | `EMAIL_TRANSPORT`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `EMAIL_FROM` | Gửi email. Thiếu SMTP thì **không đăng ký bằng email** và không dùng được "Quên mật khẩu". Các bước: [mục 6.1](#61-nối-đăng-nhập-email-gmail-facebook) |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALLBACK_URL` | Đăng nhập Google (bỏ trống ID/secret thì nút báo "Chưa cấu hình"). Các bước: [mục 6.1](#61-nối-đăng-nhập-email-gmail-facebook) |
 | `FACEBOOK_APP_ID`, `FACEBOOK_APP_SECRET`, `FACEBOOK_CALLBACK_URL` | Đăng nhập Facebook. Các bước: [mục 6.1](#61-nối-đăng-nhập-email-gmail-facebook) |
-| `VISION_ENGINE` | `ensemble` (mặc định, CLIP + Ollama), `ollama`, `clip`, `off`. Production chỉ chạy `ensemble` |
-| `VISION_OLLAMA_URL`, `VISION_OLLAMA_MODEL` | Địa chỉ Ollama (chỉ nhận loopback/mạng riêng) và mô hình |
-| `VISION_CONFIDENCE_THRESHOLD`, `VISION_TIMEOUT_MS` | Ngưỡng tin cậy (mặc định 0.8); với `ensemble` nên đặt timeout 60000 |
-| `CHECKIN_COOLDOWN_MINUTES` | Khoảng cách tối thiểu giữa hai check-in được thưởng; khuyến nghị 30+ khi chạy thật |
+| `VISION_ENGINE` | `classifier` (mặc định và duy nhất: bộ phân loại ONNX trong tiến trình, chỉ dùng CPU) hoặc `off`. Giá trị cũ `ensemble`, `clip`, `ollama` đã bị gỡ: check-in bằng ảnh tắt và log khởi động báo cần đổi thành `classifier` |
+| `VISION_CLASSIFIER_MODEL`, `VISION_CLASSIFIER_THREADS` | Mô hình và số luồng CPU cho engine `classifier` (xem [mục 6.2](#62-bộ-phân-loại-onnx-engine-classifier)) |
+| `VISION_CONFIDENCE_THRESHOLD`, `VISION_TIMEOUT_MS` | Ngưỡng tin cậy (mặc định 0.8, giá trị cũ hiệu chỉnh cho CLIP, chưa hiệu chỉnh lại cho bộ phân loại) và thời gian chờ (mặc định 20000 ms) |
+| `VISION_SELF_CHECK` | Bước tự kiểm khi nạp mô hình có `selfCheck` trong manifest (hiện chỉ mô hình học trên ảnh thật): chấm lại 4 ảnh chuẩn, lệch quá dung sai thì không nạp và check-in báo chưa sẵn sàng. `warn` chỉ ghi lỗi, dành cho máy đã chấm lại bằng ảnh có nhãn |
+| `VISION_MODEL_URL` | Chỉ dùng khi chạy `npm run vision:download` cho mô hình huấn luyện tại chỗ: địa chỉ HTTPS của tệp mô hình, tệp tải về vẫn phải đúng sha256 trong manifest. Không cần lưu trong `.env` |
+| `CHECKIN_COOLDOWN_MINUTES` | Khoảng cách tối thiểu giữa hai check-in được thưởng, mặc định 30 phút. `0` = tắt, chỉ khi phát triển (production ghi cảnh báo) |
+| `CHECKIN_DAILY_MAX` | Số check-in được thưởng tối đa của một tài khoản trong một ngày (giờ Việt Nam), mặc định 3. Lượt bị từ chối không tính. `0` = tắt (production ghi cảnh báo) |
 | `CLAMAV_HOST`, `CLAMAV_PORT` | Máy chạy `clamd` để quét mã độc ảnh. Bỏ trống thì không quét |
-| `ADMIN_MFA_KEY` | Khóa 32 byte cho khu quản trị và 2FA. Thiếu thì mọi `/api/admin` trả 503 |
+| `ADMIN_MFA_KEY` | Khóa 32 byte cho khu quản trị, 2FA và mã 6 số trong thư "Quên mật khẩu". Thiếu thì mọi `/api/admin` trả 503 và thư "Quên mật khẩu" chỉ có liên kết |
 | `AUTH_*`, `CAPTCHA_*`, `API_RATE_LIMIT_PER_MINUTE` | Giới hạn chống dò mật khẩu / đăng ký hàng loạt. Cả trường có thể dùng chung một IP NAT nên ngưỡng phải rộng; cách chọn: [mục 8.9](#89-chọn-ngưỡng-giới-hạn-theo-sĩ-số) |
 | `ANALYTICS_ENABLED`, `ANALYTICS_HASH_KEY` | Thống kê truy cập ẩn danh cho khu quản trị |
+| `ANALYTICS_EVENTS_PER_VISIT`, `ANALYTICS_VISITS_PER_IP` | Trần chống thổi phồng số liệu: số sự kiện của một lượt truy cập trong 30 phút (mặc định 120), số lượt truy cập mới từ một IP trong 10 phút (mặc định 600). Sự kiện không cần đăng nhập nên số liệu truy cập chỉ mang tính tham khảo |
 
 Tạo `ADMIN_MFA_KEY` (và một khóa **khác** cho `ANALYTICS_HASH_KEY`):
 
@@ -229,7 +232,7 @@ Mã nguồn đã xử lý đủ các luồng này, chỉ thiếu khóa của t�
 
 | Phương thức | Cần có | Khi chạy trên máy | Khi mở cho mọi người |
 |---|---|---|---|
-| Email + mật khẩu | SMTP | `EMAIL_TRANSPORT=console`: liên kết xác minh nằm trong log của API, không có thư thật | SMTP thật |
+| Email + mật khẩu | SMTP | `EMAIL_TRANSPORT=console`: liên kết xác minh, mã và liên kết đặt lại mật khẩu nằm trong log của API, không có thư thật | SMTP thật |
 | Google | Client ID, Client secret | Dùng được ngay | Publish app, khai callback HTTPS |
 | Facebook | App ID, App secret | Chỉ người có vai trò trong app | Tên miền HTTPS, khai báo `/privacy.html` và `/data-deletion.html`, Advanced Access, chế độ Live |
 
@@ -280,7 +283,7 @@ Mở cho mọi người phải có tên miền HTTPS, rồi:
 4. Chuyển `public_profile`, `email` lên Advanced Access. Tài liệu Meta ghi app Consumer được tự duyệt hai quyền này, nhưng chỗ khác lại ghi Advanced Access cần Xác minh doanh nghiệp, nên xem trên bảng điều khiển của app.
 5. Chuyển app sang chế độ **Live**.
 
-Hai trang nằm ở `client/privacy.html`, `client/data-deletion.html`, là HTML tĩnh để trình thu thập đọc được mà không chạy JavaScript. Nội dung bám theo những gì mã nguồn đang làm nhưng **chưa qua tư vấn pháp lý**: người phụ trách nên đọc lại trước khi công khai. Thay đổi cách thu thập hay lưu dữ liệu thì sửa hai tệp này và ngày cập nhật, rồi build lại.
+Hai trang nằm ở `client/privacy.html`, `client/data-deletion.html`, thuộc nhóm trang thông tin, chính sách tĩnh ở [mục 8.12](#812-trang-thông-tin-chính-sách): đọc được mà không chạy JavaScript, nội dung bám theo những gì mã nguồn đang làm nhưng **chưa qua tư vấn pháp lý**. Thay đổi cách thu thập hay lưu dữ liệu thì sửa các tệp này và ngày cập nhật, rồi build lại.
 
 **Khi có tên miền thật**
 
@@ -296,6 +299,50 @@ Hai trang nằm ở `client/privacy.html`, `client/data-deletion.html`, là HTML
 | Email Google/Facebook trùng một tài khoản đã có | Báo lỗi, không tự gộp. Đăng nhập bằng cách cũ, rồi bấm **Liên kết** ở trang **Cá nhân** |
 | Tài khoản tạo từ Facebook | Không có email, vì Graph API không cho biết email đã xác minh hay chưa. Người dùng này không dùng được "Quên mật khẩu" |
 
+### 6.2. Bộ phân loại ONNX (engine `classifier`)
+
+Nhận diện ảnh bằng một mô hình phân loại nhỏ chạy **trực tiếp trong tiến trình server** bằng `onnxruntime-node`, chỉ dùng CPU, không cần GPU hay dịch vụ ngoài. Đây là bộ nhận diện duy nhất của server: CLIP và Ollama đã bị gỡ. Đo ngày 2026-11-07 trên Ryzen 7 7735H bằng `npm run vision:benchmark`: p50 8 ms, p95 11 ms mỗi ảnh khi mô hình đã nạp, RSS đỉnh 161 MB kể cả mô hình; tệp mô hình 8 MB.
+
+```bash
+cd server
+npm run vision:download onnxmodelzoo/mobilenetv3_small_075_Opset17   # tải mô hình có kiểm mã băm
+npm run vision:benchmark   # đo tốc độ / RAM trên máy đang chạy
+```
+
+Trong `server/.env`: `VISION_ENGINE=classifier` là mặc định (mô hình ghim `onnxmodelzoo/mobilenetv3_small_075_Opset17`, đổi bằng `VISION_CLASSIFIER_MODEL`; số luồng CPU qua `VISION_CLASSIFIER_THREADS`, nên để 1–2 trên container nhỏ). Tệp `.env` cũ còn `VISION_ENGINE=ensemble`, `clip` hoặc `ollama` thì check-in bằng ảnh tắt cho tới khi đổi thành `classifier`; các biến `VISION_OLLAMA_*`, `VISION_CLIP_MODEL`, `VISION_ALLOW_CLIP_ONLY` không còn tác dụng, xóa được.
+
+**Bắt buộc đọc trước khi mở thưởng thật:** artifact hiện tại là mô hình ImageNet-pretrained ghép với **bảng ánh xạ lớp** (ghi trong `server/src/data/classifier-models.json`) — **chưa hề huấn luyện trên ảnh thật của trường**. Trên tập đồ họa tổng hợp để test nó an toàn tuyệt đối (0% thưởng nhầm) nhưng gần như từ chối tất cả. Muốn dùng cho thưởng thật:
+
+1. Thu thập 50–100 ảnh có nhãn (bình cá nhân, ly nhựa dùng một lần, vật khác, không có vật) từ chính trường.
+2. Chạy `npm run vision:evaluate -- <thư mục ảnh> --engine classifier` — xem tỉ lệ thưởng nhầm / từ chối nhầm và quét ngưỡng để chọn `VISION_CONFIDENCE_THRESHOLD`.
+3. Chỉ khi tỉ lệ thưởng nhầm chấp nhận được mới mở thưởng thật. Trong lúc chưa đánh giá, phương án dự phòng trong mã là `VISION_ENGINE=off` (tắt check-in bằng ảnh); CLIP + Ollama chỉ còn khôi phục được từ lịch sử git.
+
+Mô hình lớn hơn trong manifest (`mobilenetv3_large_100`, `efficientnet_lite0`) đổi được bằng `VISION_CLASSIFIER_MODEL` nếu sau này đánh giá thấy tốt hơn.
+
+**Mô hình học trên ảnh chụp thật (tùy chọn, 2026-11-08):** `greencanteen/bev9-dinov2-vitb-280-int8` gồm backbone DINOv2 ViT-B tách từ checkpoint RF-DETR 2XLarge (`D:\training\weights.pt`, do tài khoản Roboflow của dự án huấn luyện trên bộ *Beverage Containers* của Roboflow Universe Projects, giấy phép CC BY 4.0) và một lớp tuyến tính 9 lớp. Cách huấn luyện và toàn bộ số đo: `D:\training\session-20261107-1602\05-continuation\README.md`. Tệp `model.int8.onnx` (87 MB) không có trên Hugging Face: chép vào `server/models/greencanteen/bev9-dinov2-vitb-280-int8/`, hoặc đặt `VISION_MODEL_URL` là địa chỉ HTTPS của tệp khi chạy `npm run vision:download` (tệp tải về vẫn phải đúng sha256 trong manifest). Không có cả hai thì lệnh chỉ báo cách chép, không gọi mạng.
+
+```bash
+cd server
+npm run vision:verify greencanteen/bev9-dinov2-vitb-280-int8
+```
+
+Bật trong `server/.env` (mã nguồn và `.env.example` vẫn dùng mobilenet):
+
+```
+VISION_CLASSIFIER_MODEL=greencanteen/bev9-dinov2-vitb-280-int8
+VISION_CONFIDENCE_THRESHOLD=0.95
+```
+
+0.95 là ngưỡng đã hiệu chỉnh trên tập valid; đặt thấp hơn thì log khởi động cảnh báo. Khi nạp mô hình này, server chấm lại 4 ảnh chuẩn đi kèm repo (`src/data/vision-selfcheck`) và so với giá trị đo trên máy hiệu chỉnh: máy khác (Linux, CPU khác loại) mà lệch quá 0.05 thì không nạp, check-in báo chưa sẵn sàng thay vì thưởng theo số đo không còn đúng. `npm run vision:selfcheck` chạy bước này bằng tay. Triển khai trên Railway: [Cách 3](#cách-3-railway-có-check-in-bằng-ảnh). Lần nhìn thứ hai (F-26) của mô hình này chỉ đòi ảnh đã làm mờ chữ vẫn là bình/ly cá nhân với độ tin cậy từ 0.5 (`secondLook.minConfidence` trong manifest); đòi 0.95 như lần đầu thì trên ảnh test chỉ còn nhận đúng 127/287 (44,3%). Đo qua đúng pipeline check-in (ngưỡng 0.95), trên các tập chưa dùng khi chọn cấu hình:
+
+| Tập | Thưởng nhầm | Nhận đúng bình/ly cá nhân |
+|---|---|---|
+| Ảnh test của bộ dữ liệu (ảnh chụp, 9 loại vật chứa) | 0/318 (0,0%), CI95 0,0–1,1% | 224/287 (78,0%), CI95 72,8–82,7% |
+| Chai PET, lon, chai thủy tinh, chai sữa (drinking-waste, CC0) | 2/800 (0,2%), CI95 0,0–0,9% | — |
+| Ảnh vẽ đối kháng holdout (chữ đánh lừa) | 1/53 (1,9%) | 18/25 (72,0%) |
+
+Hạn chế đã biết: chưa đo trên ảnh chụp ở căn tin của trường; mô hình không có lớp "không có vật chứa" nên ảnh lạ vẫn bị gán một trong 9 lớp; chai thủy tinh đôi khi bị nhận là bình/ly cá nhân; ly rượu được tính là không thưởng (chờ chủ dự án quyết định); điều khoản dùng trọng số RF-DETR 2XLarge chưa xác minh. Mô hình nặng hơn mobilenet nhiều (số đo ở [mục 8.2](#82-nhận-diện-ảnh-bộ-phân-loại-onnx-trên-cpu)). Khi trường đã có đủ dữ liệu thật, huấn luyện lại (fine-tune) và thay tệp `.onnx` + cập nhật manifest — mã nguồn engine không cần đổi.
+
 ## 7. Hướng dẫn sử dụng
 
 ### 7.1. Sinh viên
@@ -305,9 +352,9 @@ Mở trang chủ (trên điện thoại có thể "Thêm vào màn hình chính"
 1. **Đăng nhập / đăng ký**: vào trang **Cá nhân**, một popup hiện ra. Chọn email + mật khẩu, Google, Facebook, mã QR hoặc passkey.
    Đăng ký bằng email cần mở liên kết xác minh gửi qua email, rồi đặt mật khẩu.
 2. **Check-in**: vào trang **Check-in**, chụp ảnh (hoặc tải ảnh lên) bình/ly nước cá nhân của bạn. Server nhận diện ảnh:
-   - Là bình/ly cá nhân với độ tin cậy đủ cao: **+10 điểm** và **1 lượt Gacha**, kèm popup câu chuyện khoa học có nguồn.
+   - Là bình/ly cá nhân với độ tin cậy đủ cao: **+10 điểm** và **1 lượt quay thưởng tri ân**, kèm popup câu chuyện khoa học có nguồn.
    - Ly nhựa dùng một lần, vật chứa khác, ảnh không rõ hoặc không có vật chứa: không được thưởng.
-3. **Gacha**: dùng lượt quay để nhận mã nạp (hiện là mã demo, xem [mục 11](#11-giới-hạn-hiện-tại)).
+3. **Quay thưởng tri ân**: mỗi lượt có cơ hội trúng một móc khóa GreenCanteen; phần lớn lượt không trúng. Trúng thì nhận mã nhận quà (trong popup và ở trang **Cá nhân**), mang tới nơi trao quà theo hướng dẫn trên trang `/gacha-rules.html`.
 4. **Bảng xếp hạng**: xem top theo tuần hoặc tháng; ảnh đại diện đổi được ở trang **Cá nhân**.
 5. **Bảo mật tài khoản** (trang **Cá nhân**): đổi mật khẩu, bật xác thực hai lớp, thêm passkey, liên kết Google/Facebook, đăng xuất các thiết bị khác.
 
@@ -338,7 +385,15 @@ Không có API nào tạo quản trị viên đầu tiên. Làm một lần trê
 
 3. Mở `https://<tên-miền>/admin`, đăng nhập, nhập mã đăng ký, quét QR bằng ứng dụng xác thực (TOTP), nhập mã 6 số và **lưu 8 mã khôi phục**.
 
-Trong khu quản trị: tổng quan số liệu, tài khoản (khóa/mở, đổi quyền, đặt lại MFA), câu chuyện (nháp → xuất bản), cấu hình Gacha theo phiên bản, thiết lập website, nhật ký kiểm toán.
+Trong khu quản trị: tổng quan số liệu, tài khoản (khóa/mở, đổi quyền, đặt lại MFA), câu chuyện (nháp → xuất bản), quay thưởng tri ân (phiên bản cấu hình, ảnh & sticker, trao quà), thiết lập website, nhật ký kiểm toán.
+
+**Quay thưởng tri ân** (khu quản trị → Quay thưởng tri ân):
+
+1. **Ảnh & sticker**: tải ảnh móc khóa, sticker khi trúng, sticker khi không trúng (PNG, JPEG, WebP hoặc GIF động, tối đa 8 MB). Máy chủ quét mã độc (nếu bật ClamAV), nén lại thành WebP giữ chuyển động, bỏ metadata. Sticker đang bật được chọn ngẫu nhiên cho màn hình kết quả; chưa có sticker thì giao diện dùng biểu tượng mặc định. Ảnh móc khóa đang được bản nháp hoặc phiên bản còn hiệu lực dùng thì không xóa được.
+2. **Phiên bản cấu hình** → **Tạo bản nháp mới**: mỗi dòng là một mẫu móc khóa gồm ảnh, tên, mô tả, xác suất trúng mỗi lượt (%, tối đa 4 chữ số thập phân, nhỏ nhất 0,0001% = 1 trên 1.000.000) và **tổng số lượng** móc khóa thật. Tổng xác suất tối đa 100%, phần còn lại là không trúng. Số đã trúng đếm chung theo mã dòng qua mọi phiên bản, nên sao phiên bản mới từ bản cũ không cấp lại số móc khóa đã trao; nhận thêm móc khóa thì tăng tổng số lượng. Nhập **hướng dẫn nhận quà** (nơi, giờ, cần mang gì, hạn nhận) rồi **Xuất bản** (cần xác thực lại).
+3. **Trao quà**: người trúng đưa mã nhận quà `TA-XXXXX-XXXXX`; tra đúng nguyên mã, đối chiếu tài khoản (tên, mã sinh viên đã che; mở trang tài khoản nếu cần xem đầy đủ) rồi bấm **Đã trao**. Bấm nhầm thì **Hoàn tác** kèm lý do. Mọi thao tác ghi nhật ký kiểm toán.
+
+Cách rút: máy chủ rút một số trong 1.000.000 bằng `crypto.randomInt`; số rơi vào khoảng của mẫu nào thì trúng mẫu đó. Mẫu đã hết thì phần xác suất của nó tính là không trúng; mọi mẫu đều hết thì không cho quay và giữ lượt. Lượt không trúng cũng được ghi lại. Khi cập nhật từ bản mã nạp demo, migration `2026-11-gacha-keychain` ngừng hiệu lực các phiên bản mã nạp (không xóa dữ liệu); mã nạp demo đã phát vẫn hiện ở trang Cá nhân, mục "Mã nạp demo cũ".
 Phiên quản trị ngắn (mặc định 15 phút nhàn rỗi, tối đa 8 giờ); thao tác nhạy cảm yêu cầu xác thực lại.
 
 **Thêm admin khác:** Khu quản trị → Tài khoản → chọn tài khoản → **Cấp quyền quản trị**. Tài khoản phải có email và mật khẩu. Sau khi xác thực lại, màn hình hiện mã đăng ký MFA một lần, trao cho người đó qua kênh an toàn.
@@ -350,7 +405,7 @@ cd server
 npm run admin:delete-user -- --student-id <mã sinh viên>
 ```
 
-Lệnh in tài khoản sắp xóa và số dữ liệu, rồi bắt gõ lại mã sinh viên. Lệnh xóa tài khoản, ảnh đại diện, check-in, mã nạp, phiên đăng nhập, passkey, 2FA và **không hoàn tác được**. Tài khoản quản trị phải gỡ quyền trước. Nhật ký kiểm toán được giữ lại, bản sao lưu cũ vẫn còn dữ liệu cho tới khi bị ghi đè. Trang đã cam kết xóa trong 30 ngày, nên xong việc hãy báo lại cho người yêu cầu.
+Lệnh in tài khoản sắp xóa và số dữ liệu, rồi bắt gõ lại mã sinh viên. Lệnh xóa tài khoản, ảnh đại diện, check-in, kết quả quay thưởng (kể cả móc khóa chưa nhận, mã nạp demo cũ), phiên đăng nhập, passkey, 2FA và **không hoàn tác được**. Tài khoản quản trị phải gỡ quyền trước. Nhật ký kiểm toán được giữ lại, bản sao lưu cũ vẫn còn dữ liệu cho tới khi bị ghi đè. Thời hạn theo khoản 4 Điều 5 Nghị định 356/2025/NĐ-CP, đã công bố ở `/data-deletion.html`: phản hồi người yêu cầu trong 02 ngày làm việc, xóa xong trong 20 ngày kể từ khi nhận yêu cầu đúng thủ tục, gia hạn tối đa một lần không quá 20 ngày và phải báo lý do. Xong việc hãy báo lại cho người yêu cầu.
 
 | Sự cố | Cách xử lý |
 |---|---|
@@ -387,7 +442,7 @@ Không có ngân sách máy chủ, chỉ cần demo: xem [mục 8.11](#811-tri�
 ```bash
 # Linux: lấy mã nguồn về (vd. /opt/greencanteen), cài thư viện chỉ cho production
 cd /opt/greencanteen/server
-ONNXRUNTIME_NODE_INSTALL=skip npm ci --omit=dev   # bỏ ONNXRUNTIME_NODE_INSTALL nếu có GPU và muốn dùng
+ONNXRUNTIME_NODE_INSTALL=skip npm ci --omit=dev   # không tải thư viện CUDA: nhận diện ảnh chỉ dùng CPU
 npm run vision:download && npm run vision:verify
 ```
 
@@ -400,10 +455,8 @@ MONGODB_URI=mongodb://<user>:<pass>@<host>:27017/greencanteen
 CLIENT_ORIGIN=https://greencanteen.truong.edu.vn
 TRUST_PROXY=loopback
 
-VISION_ENGINE=ensemble
-VISION_OLLAMA_URL=http://127.0.0.1:11434
-VISION_OLLAMA_MODEL=qwen3-vl:4b-instruct
-VISION_TIMEOUT_MS=60000
+VISION_ENGINE=classifier
+VISION_CLASSIFIER_THREADS=2
 CHECKIN_COOLDOWN_MINUTES=30
 
 EMAIL_TRANSPORT=smtp
@@ -418,30 +471,24 @@ ADMIN_MFA_KEY=<khóa base64 32 byte>
 
 Production **dừng khởi động** nếu không kết nối được MongoDB (không tự dùng DB tạm).
 
-### 8.2. Ollama (nhận diện ảnh)
+### 8.2. Nhận diện ảnh (bộ phân loại ONNX trên CPU)
 
-Production cần `ensemble` nên phải có Ollama:
+Check-in bằng ảnh chạy bằng bộ phân loại ONNX ngay trong tiến trình API ([mục 6.2](#62-bộ-phân-loại-onnx-engine-classifier)), không cần GPU, Ollama hay máy nhận diện riêng:
 
 ```bash
-ollama pull qwen3-vl:4b-instruct
+cd /opt/greencanteen/server
+npm run vision:download && npm run vision:verify
+npm run vision:benchmark   # đo tốc độ / RAM trên chính máy chủ này
 ```
 
-- Ollama **không có xác thực**: chỉ cho chạy cùng máy với API (`127.0.0.1`) hoặc trong mạng riêng có tường lửa chỉ cho máy API vào cổng 11434.
-- Trên máy Ollama đặt `OLLAMA_NO_CLOUD=1` (và `OLLAMA_KEEP_ALIVE=-1` để mô hình không bị gỡ khỏi bộ nhớ) để ảnh không thể bị gửi lên dịch vụ cloud của Ollama.
-- Không dùng mô hình cloud (tag `:cloud`). Server tự tắt check-in nếu phát hiện.
-- Trước khi mở cho sinh viên, đánh giá bằng ảnh thật rồi chọn ngưỡng: `npm run vision:evaluate` (trong `server/`).
-- Ảnh có cạnh dài trên 1024 px được thu nhỏ trước khi gửi cho Ollama, ảnh nhỏ hơn giữ nguyên, nên ảnh chụp 12 MP không tốn thêm thời gian.
+- Ảnh được chấm lần lượt từng ảnh; quá `VISION_MAX_QUEUE` ảnh đang chờ thì API trả 503 "máy chủ đang bận" thay vì để CPU quá tải. Ảnh bị hết giờ (`VISION_TIMEOUT_MS`) vẫn giữ chỗ trong hàng tới khi suy luận thật sự xong, vì không dừng được giữa chừng: lúc CPU quá tải, ảnh mới bị báo bận sớm thay vì chạy chồng lên các lượt cũ. Lượt treo hẳn chỉ giữ hàng tối đa gấp 3 lần `VISION_TIMEOUT_MS`, sau đó log có dòng `[vision] Bộ phân loại chưa xong` và hàng chạy tiếp.
+- `VISION_CLASSIFIER_THREADS` (1–8) giới hạn số luồng CPU của onnxruntime; container nhỏ nên để 1–2.
+- Ảnh sắp được thưởng được chấm lại trên bản đã làm mờ chữ (F-26), nên một check-in được thưởng tốn hai lượt suy luận.
+- Trước khi mở cho sinh viên, đánh giá bằng ảnh thật rồi chọn ngưỡng: `npm run vision:evaluate -- <thư mục ảnh>` (trong `server/`). Ngưỡng mặc định 0.8 là giá trị cũ hiệu chỉnh cho CLIP.
 
-**Phần cứng:** nên có GPU. Ảnh được thưởng cần hai lượt gọi Ollama (ảnh gốc và ảnh làm mờ chữ). Ollama xử lý từng ảnh một, và thời gian xếp hàng cũng tính vào `VISION_TIMEOUT_MS`. 
+Số đo ngày 2026-11-07 trên Ryzen 7 7735H (Windows 11, Node 24, `npm run vision:benchmark`): nạp mô hình 155 ms, p50 8 ms và p95 11 ms mỗi ảnh, 4 ảnh đồng thời 33 ms, ảnh 6000×6000 65 ms, RSS đỉnh 161 MB. Máy cloud tính theo vCPU, nên đo lại trên đúng máy đó trước khi chọn gói.
 
-| Máy | Một lượt gọi | Một check-in được thưởng | Ghi chú |
-|---|---|---|---|
-| GPU RTX 4060 Laptop | ~1,5 giây | ~3,6 giây | |
-| CPU 8 lõi thật | ~40 giây | ~80 giây | Khoảng 2 người cùng lúc |
-| CPU 4 lõi thật | ~72 giây | 149–166 giây | Mức tối thiểu. Người thứ hai cùng lúc có thể bị timeout |
-| CPU 2 lõi thật | ~143 giây | Không chạy được | Vượt trần 120 giây nên check-in luôn báo quá thời gian |
-
-Không có GPU thì đặt `VISION_TIMEOUT_MS=120000`. Máy cloud tính theo vCPU, thường 2 vCPU mới bằng 1 lõi thật, nên hãy đo trên đúng máy đó trước khi chọn.
+Mô hình tùy chọn `greencanteen/bev9-dinov2-vitb-280-int8` ([mục 6.2](#62-bộ-phân-loại-onnx-engine-classifier)), đo ngày 2026-11-08 trên cùng máy, 2 luồng (`npm run vision:benchmark -- --model greencanteen/bev9-dinov2-vitb-280-int8`): nạp mô hình 587 ms, p50 184 ms và p95 351 ms mỗi lượt suy luận, 4 ảnh đồng thời 1,4 s (chấm lần lượt), ảnh 6000×6000 475 ms, RSS đỉnh 259 MB. Ảnh được thưởng tốn hai lượt nên mất khoảng 0,4–0,7 s. Ảnh được chấm lần lượt nên khi nhiều sinh viên gửi cùng lúc, ảnh cuối phải đợi các ảnh trước (tối đa `VISION_MAX_QUEUE` ảnh); thời gian đợi trong hàng không tính vào `VISION_TIMEOUT_MS`. Chưa đo trên máy cloud nào.
 
 ### 8.3. Build giao diện
 
@@ -457,7 +504,7 @@ VITE_SITE_URL=https://greencanteen.truong.edu.vn npm run build
 $env:VITE_SITE_URL = "https://greencanteen.truong.edu.vn"; npm run build
 ```
 
-Kết quả nằm ở `client/dist/`, gồm `index.html` (sinh viên), `admin/index.html` (quản trị) và hai trang tĩnh `privacy.html`, `data-deletion.html`. Chép thư mục này tới máy chủ web.
+Kết quả nằm ở `client/dist/`, gồm `index.html` (sinh viên), `admin/index.html` (quản trị) và các trang thông tin, chính sách tĩnh ([mục 8.12](#812-trang-thông-tin-chính-sách)). Chép thư mục này tới máy chủ web.
 
 ### 8.4. Chạy API như một dịch vụ (systemd)
 
@@ -549,7 +596,7 @@ Cấu hình sai `/admin` thì đường dẫn đó rơi về ứng dụng sinh v
 
 1. Chạy `npm run admin:bootstrap` như [mục 7.3](#73-quản-trị-viên).
 2. Mở `https://<tên-miền>/api/health` → `{"ok":true,...}`.
-3. Đăng ký thử một tài khoản (kiểm SMTP), check-in thử một ảnh thật (kiểm CLIP + Ollama), đăng nhập `/admin`.
+3. Đăng ký thử một tài khoản (kiểm SMTP), check-in thử một ảnh thật (kiểm bộ phân loại ONNX), đăng nhập `/admin`.
 4. Đăng nhập sai một lần từ máy ngoài, kiểm tra `db.ratelimits.find({ key: /^login-fail-ip:/ })` có đúng IP thật (kiểm `TRUST_PROXY`).
 
 ### 8.7. Danh sách kiểm tra production
@@ -557,8 +604,8 @@ Cấu hình sai `/admin` thì đường dẫn đó rơi về ứng dụng sinh v
 - [ ] HTTPS, `NODE_ENV=production`, `CLIENT_ORIGIN` đúng tên miền cuối cùng (đổi sau này thì mọi passkey mất tác dụng).
 - [ ] `TRUST_PROXY` là địa chỉ proxy thật, không phải `true`/`*`; ngưỡng `AUTH_*_IP_MAX` và `API_RATE_LIMIT_PER_MINUTE` hợp với sĩ số trường.
 - [ ] SMTP đã cấu hình; tên miền gửi thư có SPF, DKIM, DMARC.
-- [ ] Đã đặt **Thông tin liên hệ hỗ trợ** và đọc lại `/privacy.html`, `/data-deletion.html` theo đúng cách vận hành của trường.
-- [ ] `VISION_ENGINE=ensemble`, mô hình CLIP và Ollama sẵn sàng, Ollama không mở ra ngoài mạng riêng.
+- [ ] Đã đặt **Thông tin liên hệ hỗ trợ**, đã thay mọi khối "Chưa công bố" (`data-pending`) trong các trang chính sách bằng dữ kiện đã xác minh và đọc lại các trang đó theo đúng cách vận hành thực tế ([mục 8.12](#812-trang-thông-tin-chính-sách)).
+- [ ] `VISION_ENGINE=classifier`, mô hình đã tải và khớp mã băm (`npm run vision:verify`), đã đánh giá bằng ảnh thật của trường (mục 6.2) và ghi lại ngưỡng đã chọn.
 - [ ] `ADMIN_MFA_KEY` nằm trong kho secret và có bản sao an toàn **tách khỏi** bản sao lưu DB (mất khóa thì mọi MFA mất tác dụng).
 - [ ] ClamAV đã cài, `CLAMAV_HOST` trỏ tới `clamd` trong mạng nội bộ, đã thử bằng tệp EICAR ([mục 8.10](#810-quét-mã-độc-bằng-clamav)).
 - [ ] MongoDB có tài khoản, có TLS khi ở máy khác, không mở cổng 27017 ra Internet. Tài khoản ứng dụng không có quyền `dropCollection` và không sửa, xóa được `auditlogs`.
@@ -603,21 +650,22 @@ Sau khi cài, thử một lần trên máy chủ bằng tệp EICAR (vô hại, 
 
 ### 8.11. Triển khai miễn phí để demo
 
-Không gói miễn phí nào chạy được **toàn bộ** hệ thống trên cloud: check-in ở production cần cả CLIP lẫn Ollama. Trên Windows, API production dùng ~109 MB RAM khi tắt nhận diện, nhưng 466 MB ngay sau khi nạp CLIP, chưa xử lý ảnh nào và chưa tính Ollama (mô hình ~3,3 GB). Render Free chỉ có 512 MB và 0,1 CPU.
+Check-in chỉ cần bộ phân loại ONNX chạy trên CPU (tệp 8 MB; RSS đỉnh 161 MB khi chạy benchmark trên Ryzen 7 7735H, [mục 8.2](#82-nhận-diện-ảnh-bộ-phân-loại-onnx-trên-cpu)). Trên Windows, API production dùng ~109 MB RAM khi tắt nhận diện. Chưa đo trên gói miễn phí nào: Render Free chỉ có 512 MB và 0,1 CPU, nên Cách 2 dưới đây vẫn tắt nhận diện (`VISION_ENGINE=off`) cho tới khi đo được trên đúng gói đó.
 
 | | Cách 1: Local + Cloudflare Tunnel | Cách 2: Render + MongoDB Atlas |
 |---|---|---|
-| Check-in bằng ảnh | **Có** (CLIP + Ollama thật) | **Không**, API trả 503. Điểm, Gacha từ check-in cũng không phát sinh |
+| Check-in bằng ảnh | **Có** (bộ phân loại ONNX trên CPU) | **Không** (`VISION_ENGINE=off`), API trả 503. Điểm, lượt quay thưởng từ check-in cũng không phát sinh |
 | Địa chỉ | `*.trycloudflare.com`, đổi mỗi lần mở tunnel | `*.onrender.com`, cố định |
 | Truy cập được khi | Máy bật và đủ các tiến trình đang chạy | Mọi lúc; ngủ sau 15 phút không có truy cập, lần đầu chờ ~1 phút |
 | Nên dùng khi | Buổi demo cần chạy đủ luồng | Cần link cố định để xem giao diện, đăng nhập, bảng xếp hạng, khu quản trị |
 
-Cả hai đều **chỉ để demo**, không đạt [danh sách production](#87-danh-sách-kiểm-tra-production): không có ClamAV nên log luôn có dòng `Cấu hình chưa an toàn: CLAMAV_HOST`, ảnh tải lên không được quét mã độc. Điều khoản gói miễn phí hay đổi.
+[Cách 3](#cách-3-railway-có-check-in-bằng-ảnh) (Railway) chạy được check-in bằng ảnh với mô hình học trên ảnh thật nhưng tốn phí theo mức dùng sau phần tín dụng dùng thử.
+
+Cả hai cách miễn phí đều **chỉ để demo**, không đạt [danh sách production](#87-danh-sách-kiểm-tra-production): không có ClamAV nên log luôn có dòng `Cấu hình chưa an toàn: CLAMAV_HOST`, ảnh tải lên không được quét mã độc. Điều khoản gói miễn phí hay đổi.
 
 **Không làm** mấy việc sau để "chữa cháy" check-in trên cloud:
 
 - Đặt `NODE_ENV=development` để bật `VISION_SIMULATION`: cookie mất `Secure`, và ảnh nào cũng được chấm là hợp lệ.
-- Mở Ollama ở nhà ra Internet rồi đặt `VISION_OLLAMA_TRUSTED_HOST=true`: Ollama không có xác thực.
 
 #### Email (cả hai cách)
 
@@ -637,7 +685,7 @@ Thư gửi từ địa chỉ chưa xác thực tên miền dễ vào mục Spam,
 
 #### Cách 1: Local + Cloudflare Tunnel
 
-Cần `npm run setup` đã chạy xong và đủ mô hình CLIP, Ollama. MongoDB và Ollama vẫn chỉ nghe `127.0.0.1`, Internet chỉ tới được Caddy qua tunnel.
+Cần `npm run setup` đã chạy xong và đã có mô hình nhận diện ảnh. MongoDB vẫn chỉ nghe `127.0.0.1`, Internet chỉ tới được Caddy qua tunnel.
 
 1. Cài công cụ (một lần):
 
@@ -692,7 +740,7 @@ Cần `npm run setup` đã chạy xong và đủ mô hình CLIP, Ollama. MongoDB
    }
    ```
 
-3. Bật MongoDB bằng `start-mongodb.cmd`, bật Ollama, tắt `dev:server` để trống cổng 3001. Rồi build giao diện (làm lại mỗi khi đổi mã client):
+3. Bật MongoDB bằng `start-mongodb.cmd`, tắt `dev:server` để trống cổng 3001. Rồi build giao diện (làm lại mỗi khi đổi mã client):
 
    ```bash
    npm run build --prefix client
@@ -717,8 +765,7 @@ Cần `npm run setup` đã chạy xong và đủ mô hình CLIP, Ollama. MongoDB
    $env:NODE_ENV = "production"
    $env:CLIENT_ORIGIN = "https://<địa chỉ tunnel>"
    $env:TRUST_PROXY = "loopback"
-   $env:VISION_ENGINE = "ensemble"
-   $env:VISION_TIMEOUT_MS = "60000"
+   $env:VISION_ENGINE = "classifier"
    $env:CHECKIN_COOLDOWN_MINUTES = "30"
    npm start
    ```
@@ -729,7 +776,6 @@ Lưu ý:
 
 - Mỗi lần mở lại tunnel địa chỉ đổi: chạy lại API với `CLIENT_ORIGIN` mới. Passkey và callback Google/Facebook gắn với địa chỉ cũ sẽ mất tác dụng, nên buổi demo dùng email + mật khẩu hoặc mã QR. Muốn địa chỉ cố định phải có tên miền riêng trên Cloudflare và tạo tunnel có tên.
 - Quick Tunnel chỉ dành cho thử nghiệm: tối đa 200 yêu cầu đồng thời, không cam kết hoạt động liên tục.
-- Không chạy game hay ứng dụng nặng GPU trong lúc demo, Ollama có thể treo làm check-in báo lỗi.
 - Xong việc thì tắt tunnel (`Ctrl+C`) để đóng đường vào máy của bạn.
 
 #### Cách 2: Render + MongoDB Atlas
@@ -760,6 +806,7 @@ Tên `greencanteen` và `greencanteen-api` dưới đây chỉ là ví dụ. Tê
    ```
    NODE_VERSION=24
    NODE_ENV=production
+   HOST=0.0.0.0
    MONGODB_URI=<chuỗi Atlas>
    CLIENT_ORIGIN=https://greencanteen.onrender.com
    TRUST_PROXY=1
@@ -768,7 +815,7 @@ Tên `greencanteen` và `greencanteen-api` dưới đây chỉ là ví dụ. Tê
    ANALYTICS_HASH_KEY=<khóa mới khác>
    ```
 
-   Log sẽ có cảnh báo về `TRUST_PROXY=1`: chấp nhận được vì cổng API trên Render không mở trực tiếp ra ngoài.
+   Log sẽ có cảnh báo về `TRUST_PROXY=1` và `HOST=0.0.0.0`: chấp nhận được vì cổng API trên Render không mở trực tiếp ra ngoài, chỉ đi qua proxy của Render. Thiếu `HOST=0.0.0.0` thì API chỉ nghe trên loopback và Render báo dịch vụ không phản hồi.
 
 5. **Tạo giao diện**: New > Static Site, cùng repository, đặt tên `greencanteen`, để địa chỉ trùng `CLIENT_ORIGIN`.
 
@@ -824,9 +871,114 @@ Giới hạn cần biết:
 | Atlas: 0,5 GB, 100 thao tác/giây, 500 kết nối | Ảnh đại diện lưu trong MongoDB nên cũng tính vào 0,5 GB. Đĩa Render mất khi khởi động lại nhưng ứng dụng không giữ gì lâu dài trên đó |
 | Atlas tự tạm dừng sau 30 ngày không có kết nối | Vào Atlas bấm Resume. Bật sao lưu Free cluster nếu dữ liệu đáng giữ (lưu tối đa 4 bản hằng ngày) |
 
+#### Cách 3: Railway (có check-in bằng ảnh)
+
+Railway tính tiền theo RAM và CPU dùng thực tế. Hướng dẫn này **chưa được chạy thử trên Railway thật**: số đo ở [mục 6.2](#62-bộ-phân-loại-onnx-engine-classifier) và [8.2](#82-nhận-diện-ảnh-bộ-phân-loại-onnx-trên-cpu) là của máy Windows dùng để hiệu chỉnh. Gói Free (0,5 GB RAM, 1 vCPU) quá sát cho mô hình học trên ảnh thật: API kèm mô hình ước khoảng 350–400 MB (chưa đo trên Linux), và một tài khoản gửi dồn ảnh PNG cực lớn còn làm RAM tăng thêm vài trăm MB. Thử bằng gói Trial (1 GB, 2 vCPU dùng chung), chạy thật bằng Hobby. Chưa có ClamAV nên cũng chưa đạt [danh sách production](#87-danh-sách-kiểm-tra-production).
+
+Giao diện làm như bước 5 của Cách 2 (Static Site của Render, hoặc nơi khác có rewrite `/api/*`), chỉ đổi đích rewrite thành địa chỉ API trên Railway. Rewrite giữ trình duyệt ở cùng một địa chỉ nên cookie phiên vẫn dùng được. Đừng cho giao diện gọi thẳng địa chỉ Railway (`VITE_API_URL`): khi đó cookie phiên thành cookie bên thứ ba và Safari (mọi trình duyệt trên iPhone, iPad) chặn hẳn, kể cả với `COOKIE_SAMESITE=none`.
+
+Trước khi gửi, giao diện thu nhỏ ảnh chọn từ thư viện hoặc chụp bằng camera về cạnh dài tối đa 2048 px và nén JPEG chất lượng 0,85 (`client/src/lib/imageCompress.js`), nên request đi qua proxy rewrite nhẹ hơn nhiều so với ảnh gốc; ảnh nhỏ hơn 2048 px và nhẹ hơn 1,5 MB được gửi nguyên. Ảnh trình duyệt không đọc được thì gửi nguyên tệp (tối đa `CHECKIN_MAX_IMAGE_MB`). Proxy của Vercel không công bố giới hạn kích thước request khi rewrite ra ngoài, nên sau khi triển khai hãy thử check-in một ảnh lớn.
+
+1. **MongoDB và khóa:** như bước 2–3 của Cách 2; Network Access của Atlas phải cho phép kết nối từ Railway.
+
+2. **Tạo service API** từ repository GitHub. Settings:
+
+   | Mục | Giá trị |
+   |---|---|
+   | Root Directory | `server` |
+   | Start Command | để trống: Railpack chạy script `start` (`node src/index.js`) |
+   | Healthcheck Path | `/api/health` |
+
+   Không dùng `railway.json`: Railway đã ngừng nhận config-as-code cho service mới.
+
+3. **Thêm volume** cho service, mount tại `/data` (Free/Trial 0,5 GB, Hobby 5 GB; mô hình mới 87 MB, mobilenet 8 MB). Volume chỉ gắn khi container khởi động, nên tệp ghi ra lúc build không nằm trên volume.
+
+4. **Biến môi trường**, cộng thêm phần SMTP ở [Email (cả hai cách)](#email-cả-hai-cách):
+
+   ```
+   RAILPACK_NODE_VERSION=24
+   RAILPACK_NODE_NPM_INSTALL=npm ci
+   ONNXRUNTIME_NODE_INSTALL=skip
+   NODE_ENV=production
+   HOST=0.0.0.0
+   MONGODB_URI=<chuỗi kết nối>
+   CLIENT_ORIGIN=https://<địa chỉ giao diện>
+   TRUST_PROXY=1
+   ADMIN_MFA_KEY=<khóa mới>
+   ANALYTICS_HASH_KEY=<khóa mới khác>
+   VISION_ENGINE=classifier
+   VISION_MODEL_DIR=/data/models
+   VISION_CLASSIFIER_MODEL=greencanteen/bev9-dinov2-vitb-280-int8
+   VISION_CONFIDENCE_THRESHOLD=0.95
+   VISION_TIMEOUT_MS=60000
+   VISION_CLASSIFIER_THREADS=2
+   ```
+
+   - `HOST=0.0.0.0` là bắt buộc: Railway chỉ chuyển request vào ứng dụng nghe `0.0.0.0` trên cổng `PORT` (Railway tự đặt `PORT`). Thiếu biến này thì API chỉ nghe loopback và Railway báo "Application Failed to Respond".
+   - `RAILPACK_NODE_VERSION=24` là bản Node đã đo; `engines` của server chỉ ghi `>=20`.
+   - Railpack mặc định chạy `npm install`. `RAILPACK_NODE_NPM_INSTALL=npm ci` cài đúng phiên bản trong `package-lock.json` (onnxruntime-node 1.30.0, sharp 0.35.5) và báo lỗi nếu lockfile lệch `package.json`.
+   - `ONNXRUNTIME_NODE_INSTALL=skip`: trên Linux x64, bước cài của onnxruntime-node mặc định tải thêm thư viện CUDA, server chỉ chạy CPU.
+   - `VISION_CLASSIFIER_THREADS` đặt bằng số vCPU của gói.
+   - `VISION_ENGINE`, `VISION_CLASSIFIER_MODEL`, `VISION_CONFIDENCE_THRESHOLD`, `VISION_TIMEOUT_MS` giống `server/.env` của máy hiệu chỉnh. Thiếu `VISION_CLASSIFIER_MODEL` thì server dùng mặc định của mã (mobilenet, gần như từ chối mọi ảnh thật) và log khởi động có dòng lỗi `... chưa được hiệu chỉnh trên ảnh có nhãn`. Thiếu `VISION_TIMEOUT_MS` thì thời gian chờ là 20000 ms.
+   - `VISION_TIMEOUT_MS=60000`: sinh viên chờ tối đa 60 giây cho một lượt chấm; lượt treo giữ hàng tối đa 180 giây ([mục 8.2](#82-nhận-diện-ảnh-bộ-phân-loại-onnx-trên-cpu)). Proxy rewrite của giao diện cũng phải chờ đủ lâu: Vercel chờ máy chủ ngoài tối đa 120 giây ([changelog](https://vercel.com/changelog/cdn-origin-timeout-increased-to-two-minutes)); Render chưa công bố con số, một chủ đề cũ trên [diễn đàn Render](https://community.render.com/t/15-second-request-timeout/568) ghi 30 giây. Giao diện đặt trên Render thì lượt chấm quá thời gian đó báo lỗi proxy thay vì thông báo hết giờ của server.
+   - Log production sẽ cảnh báo về `HOST` và `TRUST_PROXY`; chấp nhận được vì service chỉ nhận request qua proxy của Railway.
+
+5. **Đưa mô hình vào volume** (một lần). Tệp `model.int8.onnx` không nằm trong git và Railway không lấy tệp Git LFS.
+
+   Trên máy đang có mô hình, kiểm tệp trước khi đưa lên: `npm run vision:verify greencanteen/bev9-dinov2-vitb-280-int8` (trong `server/`) phải báo khớp; tệp đúng nặng 87 429 450 byte, sha256 `3d271658d446eb97d858f1e4c2569b7b42a2136eb08282215bf910c412df9856`. Đặt tệp ở một địa chỉ HTTPS tạm chỉ bạn biết. Địa chỉ phải trả thẳng nội dung tệp: liên kết mở trang xem trước (như liên kết chia sẻ thường của Google Drive) không qua được bước kiểm sha256 và không có tệp nào được ghi.
+
+   Cài Railway CLI trên máy của bạn (`npm i -g @railway/cli`, rồi `railway login` và `railway link` trong thư mục dự án), mở shell trong container bằng `railway ssh` (lần đầu cần đăng ký SSH key với Railway) và chạy:
+
+   ```bash
+   VISION_MODEL_URL="https://<địa chỉ tạm>/model.int8.onnx" npm run vision:download greencanteen/bev9-dinov2-vitb-280-int8
+   npm run vision:download onnxmodelzoo/mobilenetv3_small_075_Opset17
+   npm run vision:selfcheck
+   ```
+
+   `vision:download` chỉ ghi tệp khi đúng kích thước và sha256 trong manifest, nên địa chỉ bị tráo nội dung cũng không đưa được mô hình khác vào. Đặt `VISION_MODEL_URL` ngay trên dòng lệnh, không lưu thành biến của service. Xong thì xóa tệp ở địa chỉ tạm (điều khoản phân phối trọng số chưa xác minh) và Redeploy để server nạp mô hình.
+
+6. **Tạo quản trị viên** ngay trong `railway ssh`: `npm run admin:bootstrap -- --email admin@truong.edu.vn --name "Họ Tên Quản Trị"` (lệnh dùng `MONGODB_URI` và `ADMIN_MFA_KEY` của service).
+
+7. **Kiểm tra.**
+   - Log khởi động phải có `Nhận diện ảnh tại máy chủ: bộ phân loại ONNX (greencanteen/bev9-dinov2-vitb-280-int8, ...), ngưỡng 0.95` và không có dòng lỗi `... chưa được hiệu chỉnh trên ảnh có nhãn`.
+   - Log khởi động phải có `Bộ phân loại ONNX đã sẵn sàng (... ms); tự kiểm 4 ảnh chuẩn: lệch lớn nhất ... (cho phép 0.05).` Chỉ dòng log này (hoặc `npm run vision:selfcheck`) cho biết mô hình đã nạp được: `/api/checkin/status` chỉ phản ánh cấu hình (`"mode":"local"`), kể cả khi mô hình thiếu tệp hay không qua bước tự kiểm.
+   - Thấy dòng `[vision-self-check]` báo không qua bước tự kiểm nghĩa là máy Railway tính khác máy hiệu chỉnh: check-in tự tắt, không thưởng nhầm. Chấm lại trên Railway bằng ảnh có nhãn của trường (`npm run vision:evaluate`, [mục 6.2](#62-bộ-phân-loại-onnx-engine-classifier)); chỉ khi chấp nhận kết quả mới đặt `VISION_SELF_CHECK=warn`. Ghi lại loại CPU bằng `grep -m1 'model name' /proc/cpuinfo`.
+   - Qua bước tự kiểm chỉ có nghĩa 4 ảnh chuẩn lệch không quá 0,05; tỉ lệ thưởng nhầm và nhận đúng trên Railway vẫn chưa được đo.
+   - Kiểm `TRUST_PROXY` như bước 7 của Cách 2: khóa `login-fail-ip:` trong collection `ratelimits` phải là IP thật của bạn.
+
+### 8.12. Trang thông tin, chính sách
+
+Tám trang HTML tĩnh ở `client/`, đọc được khi không chạy JavaScript. Danh sách và thứ tự ở chân trang nằm trong `client/src/legal/pages.js`; chân trang chung được chèn vào chỗ `<!--legal-footer-->` khi chạy dev và khi build.
+
+| Đường dẫn | Nội dung |
+|---|---|
+| `/about.html` | Giới thiệu GreenCanteen |
+| `/contact.html` | Liên hệ. Kênh liên hệ lấy từ **Thông tin liên hệ hỗ trợ** trong khu quản trị |
+| `/terms.html` | Điều khoản sử dụng |
+| `/privacy.html` | Chính sách bảo mật và xử lý dữ liệu cá nhân (URL khai với Meta) |
+| `/data-deletion.html` | Hướng dẫn xóa dữ liệu (URL khai với Meta) |
+| `/operating-rules.html` | Quy chế hoạt động. Thanh toán, giao nhận, đổi trả, hoàn tiền, kiểm hàng ghi "Chưa áp dụng" vì không có chức năng bán hàng |
+| `/gacha-rules.html` | Thể lệ quay thưởng tri ân. Mẫu móc khóa, ảnh, xác suất, số còn lại và hướng dẫn nhận quà lấy từ `GET /api/gacha/rules`: cấu hình đang hiệu lực, không cần đăng nhập, không lộ ghi chú nội bộ. Đường dẫn giữ tên cũ để liên kết đã chia sẻ không hỏng |
+| `/complaints.html` | Tiếp nhận và giải quyết khiếu nại, tranh chấp |
+
+Nội dung chỉ ghi điều kiểm được trong mã nguồn và trong văn bản pháp luật tra cứu ngày 07/11/2026: Luật Bảo vệ dữ liệu cá nhân 91/2025/QH15, Nghị định 356/2025/NĐ-CP, Luật Thương mại điện tử 122/2025/QH15, Nghị định 248/2026/NĐ-CP, Luật Bảo vệ quyền lợi người tiêu dùng 19/2023/QH15, Luật Thương mại (văn bản hợp nhất 113/VBHN-VPQH), Nghị định 81/2018/NĐ-CP (văn bản hợp nhất 55/VBHN-BCT, đã gồm Nghị định 239/2026/NĐ-CP), Nghị định 30/2007/NĐ-CP, Nghị định 147/2024/NĐ-CP. Các trang **chưa qua tư vấn pháp lý**.
+
+Dữ kiện chưa xác minh được để trong khối "Chưa công bố" có thuộc tính `data-pending` (tìm bằng `grep -n data-pending client/*.html`):
+
+| `data-pending` | Cần chủ dự án xác nhận |
+|---|---|
+| `operator`, `controller`, `organizer` | Tên, tư cách pháp lý, địa chỉ, người đại diện của đơn vị vận hành; bên kiểm soát dữ liệu; người phụ trách bảo vệ dữ liệu; đơn vị tổ chức quay thưởng tri ân, nguồn kinh phí và giá trị móc khóa |
+| `support-contact` | Kênh liên hệ chính thức. Đặt ở khu quản trị; khối này tự ẩn khi đã đặt |
+| `processors`, `cross-border` | Nhà cung cấp máy chủ, cơ sở dữ liệu, email, máy quét mã độc; nơi đặt máy chủ và bản sao lưu; có bật thống kê truy cập không |
+| `retention` | Thời hạn lưu nhật ký kiểm toán, giá trị `ANALYTICS_RETENTION_DAYS` đang dùng, lịch sao lưu |
+| `children` | Độ tuổi người dùng, cách lấy ý kiến cha mẹ hoặc người giám hộ |
+| `complaint-deadlines` | Thời hạn báo đã nhận và giải quyết khiếu nại ngoài yêu cầu về dữ liệu |
+
+Điền xong một mục thì thay cả khối bằng nội dung đã xác minh, sửa ngày "Cập nhật lần cuối", rồi build lại. Đổi cách thu thập, lưu dữ liệu hay cơ chế quay thưởng thì sửa trang tương ứng cùng lúc với mã. Không gắn biểu tượng "Đã thông báo/Đã đăng ký Bộ Công Thương": biểu tượng này chỉ cấp qua online.gov.vn cho nền tảng thương mại điện tử đã thông báo hoặc đăng ký (Điều 45 Nghị định 248/2026/NĐ-CP), GreenCanteen không bán hàng nên không thuộc diện này.
+
 ## 9. Kiểm thử
 
-Test không cần tài khoản hay khóa thật: MongoDB in-memory riêng; Ollama, Google, Facebook, SMTP đều được giả lập. Từ thư mục gốc:
+Test không cần tài khoản hay khóa thật: MongoDB in-memory riêng; Google, Facebook, SMTP đều được giả lập. Từ thư mục gốc:
 
 | Lệnh | Việc làm |
 |---|---|
@@ -835,7 +987,7 @@ Test không cần tài khoản hay khóa thật: MongoDB in-memory riêng; Ollam
 | `npm run test:e2e:build` | Kiểm bản build thật: CSP, service worker, robots |
 | `npm run coverage` | Độ phủ C0/C1/C2 → `server/coverage/`, `client/coverage/` |
 
-Test nhận diện bằng CLIP/VLM thật chỉ chạy khi đã có mô hình trong `server/models/` và Ollama trong máy, không thì tự bỏ qua.
+Test nhận diện bằng bộ phân loại ONNX thật chỉ chạy khi đã có mô hình trong `server/models/` (`npm run vision:download`), không thì tự bỏ qua và ghi lý do.
 
 ## 10. Xử lý sự cố
 
@@ -844,9 +996,9 @@ Test nhận diện bằng CLIP/VLM thật chỉ chạy khi đã có mô hình tr
 | Vite báo `ECONNRESET` / `ECONNREFUSED` | API không chạy, đang khởi động lại, hoặc cổng 3001 bị tiến trình khác chiếm (server báo « Cổng 3001 đang được tiến trình khác dùng »). Chỉ chạy một API trên cổng 3001 |
 | Mọi tài khoản biến mất sau khi khởi động lại | Đang dùng DB in-memory (không kết nối được MongoDB). Chạy MongoDB thật và đặt `MONGODB_URI` |
 | Server không khởi động, "Không kết nối được MongoDB" | Chưa bật MongoDB: chạy `start-mongodb.cmd` trong thư mục cài MongoDB. Đã đặt `MONGODB_URI` hoặc chạy production thì server không tự dùng DB tạm. Kiểm tra `MONGODB_URI`, mạng, tài khoản |
-| Check-in báo "chưa sẵn sàng" (503) | Thiếu mô hình CLIP (`npm run vision:download`), Ollama chưa chạy / chưa `pull` mô hình, hoặc `VISION_ENGINE` không hợp lệ cho production. Xem log khởi động |
+| Check-in báo "chưa sẵn sàng" (503) | Thiếu mô hình (`npm run vision:download`), hoặc `VISION_ENGINE` không hợp lệ: giá trị cũ `ensemble`, `clip`, `ollama` phải đổi thành `classifier`. Xem log khởi động |
 | Check-in báo "máy chủ đang bận" | Quá `VISION_MAX_QUEUE` ảnh chờ nhận diện; tăng tài nguyên hoặc giảm tải |
-| Check-in báo "mất quá nhiều thời gian" | Ollama chạy trên CPU quá chậm, đang xếp hàng, hoặc GPU bị game/ứng dụng khác chiếm. Không có GPU thì đặt `VISION_TIMEOUT_MS=120000` và xem bảng phần cứng ở [mục 8.2](#82-ollama-nhận-diện-ảnh) |
+| Check-in báo "mất quá nhiều thời gian" | CPU máy chủ quá tải hoặc nhiều ảnh đang xếp hàng. Đo bằng `npm run vision:benchmark` trên đúng máy đó, so với số đo ở [mục 8.2](#82-nhận-diện-ảnh-bộ-phân-loại-onnx-trên-cpu); chỉnh `VISION_CLASSIFIER_THREADS`, `VISION_TIMEOUT_MS`, `VISION_MAX_QUEUE` |
 | Tab "Tạo tài khoản" hoặc "Quên mật khẩu" báo "Chưa cấu hình" | Chưa có `SMTP_HOST` / `EMAIL_FROM`. Khi phát triển dùng `EMAIL_TRANSPORT=console` |
 | Nút Google / Facebook báo "Chưa cấu hình" | Thiếu ID hoặc secret trong `server/.env`, hoặc đã điền mà chưa khởi động lại API |
 | Trang Google báo `redirect_uri_mismatch` | Callback không khớp tuyệt đối với **Authorized redirect URIs**, kể cả `http`/`https`, cổng và dấu `/` ở cuối |
@@ -863,4 +1015,10 @@ Test nhận diện bằng CLIP/VLM thật chỉ chạy khi đã có mô hình tr
 
 ## 11. Giới hạn hiện tại
 
-- Mã nạp Gacha hiện là mã demo, chưa xác minh đổi được tại nhà mạng; cần tích hợp đối tác nạp thật trước khi dùng thật.
+- Quay thưởng tri ân trao móc khóa thật: trước khi xuất bản phiên bản đầu tiên phải xác định đơn vị tổ chức, nguồn kinh phí, giá trị móc khóa và rà lại pháp lý. Nếu một thương nhân (vd. đơn vị kinh doanh căn tin) tài trợ hoặc dùng hoạt động này để xúc tiến bán hàng thì đó là khuyến mại, mà khoản 7 Điều 100 Luật Thương mại cấm khuyến mại tại trường học; không bao giờ thu phí, bán lượt quay hay cho đổi điểm lấy lượt (khoản 1, 9 Điều 6 Nghị định 30/2007/NĐ-CP đã sửa đổi). Không quảng bá hoạt động này như xổ số.
+- Móc khóa không có hạn nhận tự động: mã nhận quà không tự hủy, hạn nhận chỉ là chữ trong hướng dẫn nhận quà. Tài khoản bị xóa khi còn móc khóa chưa nhận thì bộ đếm vẫn tính móc khóa đó là đã trúng; tăng tổng số lượng ở phiên bản sau nếu cần.
+- Bộ sinh số ngẫu nhiên và cách rút chưa được bên thứ ba kiểm định; xác suất nhỏ nhất biểu diễn được là 1 trên 1.000.000.
+- Chưa có bước ghi nhận đồng ý theo Điều 9 Luật Bảo vệ dữ liệu cá nhân và Điều 6 Nghị định 356/2025/NĐ-CP: đăng ký không có ô đồng ý, không lưu thời điểm và phiên bản chính sách đã đồng ý; thống kê truy cập bật theo mặc định (`ANALYTICS_ENABLED=true` trong `.env.example`) mà không hỏi ý kiến; bảng xếp hạng công khai họ tên, ảnh đại diện mà không có tùy chọn ẩn.
+- Không hỏi tuổi, chưa có cách lấy ý kiến cha mẹ hoặc người giám hộ nếu người dùng là trẻ em (Điều 24 Luật Bảo vệ dữ liệu cá nhân).
+- Nhật ký kiểm toán không tự xóa, tài khoản lâu không dùng không tự xóa: cần chốt thời hạn lưu (khoản 3 Điều 3 Luật Bảo vệ dữ liệu cá nhân).
+- Ứng dụng sinh viên tải phông chữ từ Google Fonts, nên trình duyệt gửi địa chỉ IP cho Google; trang chính sách đã ghi rõ điều này.

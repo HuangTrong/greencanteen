@@ -8,11 +8,13 @@ const ADMIN_PAGES = [
   ['/admin/users', 'Tài khoản'],
   ['/admin/stories', 'Câu chuyện'],
   ['/admin/stories/new', 'Thêm câu chuyện'],
-  ['/admin/gacha', 'Gacha'],
+  ['/admin/gacha', 'Quay thưởng tri ân'],
+  ['/admin/gacha/media', 'Ảnh & sticker'],
+  ['/admin/gacha/rewards', 'Trao quà'],
   ['/admin/settings', 'Thiết lập website'],
   ['/admin/audit', 'Nhật ký kiểm toán'],
 ];
-const ADMIN_APIS = ['/api/admin/overview', '/api/admin/users', '/api/admin/stories', '/api/admin/gacha/configs', '/api/admin/site-settings', '/api/admin/audit-logs'];
+const ADMIN_APIS = ['/api/admin/overview', '/api/admin/users', '/api/admin/stories', '/api/admin/gacha/configs', '/api/admin/gacha/media', '/api/admin/gacha/rewards', '/api/admin/site-settings', '/api/admin/audit-logs'];
 
 const baseUrl = (testInfo) => testInfo.project.use.baseURL;
 
@@ -95,7 +97,7 @@ test('quản trị viên đăng ký MFA, mọi màn hình kể cả trang chi ti
   for (const [path, region] of [
     ['/admin/users', 'Danh sách tài khoản'],
     ['/admin/stories', 'Danh sách câu chuyện'],
-    ['/admin/gacha', 'Các phiên bản cấu hình Gacha'],
+    ['/admin/gacha', 'Các phiên bản cấu hình quay thưởng tri ân'],
   ]) {
     await page.goto(path);
     await page.getByRole('region', { name: region }).getByRole('link').first().click();
@@ -105,7 +107,7 @@ test('quản trị viên đăng ký MFA, mọi màn hình kể cả trang chi ti
   }
   await page.goto('/admin/gacha');
   await page.getByRole('button', { name: 'Tạo bản nháp mới' }).click();
-  await expect(page.getByRole('region', { name: 'Danh mục giải của bản nháp' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Mẫu móc khóa của bản nháp' })).toBeVisible();
   await checkLayout('admin_ban_nhap_gacha');
 });
 
@@ -161,12 +163,12 @@ test('biểu đồ dùng phím mũi tên; đổi khoảng thời gian cập nh�
   const { context } = await studentApi(playwright, baseUrl(testInfo));
   const checkIn = await context.post('/api/checkin', { multipart: { image: pngFile() } });
   expect(checkIn.status()).toBe(200);
-  expect((await context.post('/api/gacha/spin')).status()).toBe(200);
+  expect((await context.post('/api/gacha/draw')).status()).toBe(200);
 
   await adminLogin(page, request);
   await expect(page.getByText('Doanh thu', { exact: true }).locator('..')).toContainText('Chưa có nguồn dữ liệu');
   await expect(page.getByText('Lợi nhuận', { exact: true }).locator('..')).toContainText('Chưa có nguồn dữ liệu');
-  await expect(page.getByText('Không phải doanh thu hay chi phí', { exact: true })).toBeVisible();
+  await expect(page.getByText('Lượt trúng móc khóa', { exact: true }).first()).toBeVisible();
 
   const chart = page.getByRole('img', { name: /Check-in/ });
   await chart.focus();
@@ -245,27 +247,24 @@ test('câu chuyện: lưu nháp thiếu nguồn, nguồn HTTP bị từ chối, 
   await expect(page.getByText('Đã gỡ câu chuyện.')).toBeVisible();
 });
 
-test('Gacha: nháp phải đủ 100%, xuất bản cần xác thực lại, phần thưởng của sinh viên theo cấu hình mới', async ({ page, request, playwright }, testInfo) => {
+test('quay thưởng tri ân: xác suất sai báo tại chỗ, xuất bản cần xác thực lại, sinh viên trúng theo cấu hình mới, trao quà', async ({ page, request, playwright }, testInfo) => {
   // Có hai lần xác thực lại, lần sau phải chờ mã TOTP mới; trên cấu hình di động mỗi thao tác trong bảng cũng chậm hơn
   test.setTimeout(150_000);
   const admin = await adminLogin(page, request);
-  await goToSection(page, 'Gacha');
+  await goToSection(page, 'Quay thưởng tri ân');
   await page.getByRole('button', { name: 'Tạo bản nháp mới' }).click();
   await expect(page.getByRole('heading', { name: /^Phiên bản \d+$/ })).toBeVisible();
   const version = Number((await page.getByRole('heading', { name: /^Phiên bản \d+$/ }).textContent()).replace(/\D/g, ''));
 
-  // Tắt mọi giải trừ giải đầu, đặt 90%: chưa đủ điều kiện
-  const toggles = page.getByRole('checkbox', { name: /^Bật giải/ });
-  for (let i = 1; i < (await toggles.count()); i += 1) await toggles.nth(i).uncheck();
-  await page.getByLabel('Mệnh giá giải 1', { exact: true }).fill('30000');
-  await page.getByLabel('Xác suất giải 1', { exact: true }).fill('90');
-  await expect(page.getByText(/phải bằng đúng 100%/)).toBeVisible();
-  await page.getByRole('button', { name: 'Xuất bản' }).click();
-  await page.getByRole('dialog', { name: `Xuất bản phiên bản ${version}` }).getByRole('button', { name: 'Xuất bản' }).click();
-  await expect(page.getByText(/Tổng xác suất các giải đang bật phải bằng 100%/)).toBeVisible();
-
-  await page.getByLabel('Xác suất giải 1', { exact: true }).fill('100');
-  await expect(page.getByText(/100% — hợp lệ/)).toBeVisible();
+  // Bản nháp sao mẫu móc khóa của phiên bản đang hiệu lực. Xác suất quá 100% bị báo ngay tại ô nhập khi lưu
+  await page.getByLabel('Tên móc khóa mẫu 1', { exact: true }).fill('Lá vàng E2E');
+  await page.getByLabel('Xác suất trúng mẫu 1', { exact: true }).fill('150');
+  await page.getByRole('button', { name: 'Lưu nháp' }).click();
+  await expect(page.getByText('Xác suất là số từ 0 đến 100, tối đa 4 chữ số thập phân.')).toBeVisible();
+  await page.getByLabel('Xác suất trúng mẫu 1', { exact: true }).fill('0.01');
+  await expect(page.getByText('≈ 1 trên 10.000 lượt', { exact: true })).toBeVisible();
+  await page.getByLabel('Xác suất trúng mẫu 1', { exact: true }).fill('100');
+  await expect(page.getByText(/Tổng xác suất trúng của các mẫu đang bật: 100%/)).toBeVisible();
   await expireReauth(request, admin);
   await page.getByRole('button', { name: 'Xuất bản' }).click();
   await page.getByRole('dialog', { name: `Xuất bản phiên bản ${version}` }).getByRole('button', { name: 'Xuất bản' }).click();
@@ -275,14 +274,25 @@ test('Gacha: nháp phải đủ 100%, xuất bản cần xác thực lại, ph�
 
   const { context } = await studentApi(playwright, baseUrl(testInfo));
   expect((await context.post('/api/checkin', { multipart: { image: pngFile() } })).status()).toBe(200);
-  const spin = await (await context.post('/api/gacha/spin')).json();
-  expect(spin.prize.amountVnd).toBe(30_000);
+  const spin = await (await context.post('/api/gacha/draw')).json();
+  expect(spin.outcome).toBe('win');
+  expect(spin.prize.label).toBe('Lá vàng E2E');
   await context.dispose();
 
   await page.reload();
-  const row = page.getByRole('region', { name: 'Danh mục giải của phiên bản đã xuất bản' }).getByRole('row').nth(1);
-  await expect(row).toContainText('30.000 ₫');
+  const row = page.getByRole('region', { name: 'Mẫu móc khóa của phiên bản đã xuất bản' }).getByRole('row').nth(1);
+  await expect(row).toContainText('Lá vàng E2E');
   await expect(row).toContainText('100%');
+
+  // Trao quà: tra đúng mã nhận quà rồi xác nhận
+  const configUrl = page.url();
+  await page.getByRole('navigation', { name: 'Mục quay thưởng tri ân' }).getByRole('link', { name: 'Trao quà' }).click();
+  await page.getByLabel('Mã nhận quà (đúng nguyên mã)').fill(spin.prize.claimCode.toLowerCase());
+  await page.getByRole('button', { name: 'Tìm' }).click();
+  await page.getByRole('button', { name: `Xác nhận đã trao ${spin.prize.claimCode}` }).click();
+  await page.getByRole('dialog', { name: `Xác nhận đã trao ${spin.prize.claimCode}` }).getByRole('button', { name: 'Xác nhận đã trao' }).click();
+  await expect(page.getByText('Đã xác nhận trao quà.')).toBeVisible();
+  await page.goto(configUrl);
 
   // Trả lại cấu hình để các kịch bản khác không phụ thuộc mệnh giá vừa đặt
   await expireReauth(request, admin);

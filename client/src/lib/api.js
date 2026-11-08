@@ -92,6 +92,8 @@ export const api = {
   unlinkProvider: (provider) => request(`/api/auth/providers/${encodeURIComponent(provider)}`, { method: 'DELETE' }),
   forgotPassword: (email, captcha) => request('/api/auth/password/forgot', jsonBody('POST', { email, captcha })),
   resetPassword: (token, password) => request('/api/auth/password/reset', jsonBody('POST', { token, password })),
+  resetPasswordWithCode: (email, code, password) =>
+    request('/api/auth/password/reset-code', jsonBody('POST', { email, code, password })),
   changePassword: (currentPassword, newPassword) =>
     request('/api/auth/password/change', jsonBody('POST', { currentPassword, newPassword })),
   /** Google/Facebook: điều hướng cả trang tới server, server chuyển tiếp sang nhà cung cấp */
@@ -130,6 +132,9 @@ export const api = {
     return request('/api/checkin', { method: 'POST', body: fd });
   },
   history: () => request('/api/checkin/history'),
-  gachaSpin: () => request('/api/gacha/spin', { method: 'POST' }),
-  gachaRewards: () => request('/api/gacha/rewards'),
+  // Quay thưởng tri ân (đường dẫn API giữ tên "gacha" từ trước)
+  gachaDraw: () => request('/api/gacha/draw', { method: 'POST' }),
+  gachaResults: () => request('/api/gacha/results'),
+  /** Thể lệ công khai: cấu hình quay thưởng đang hiệu lực, không cần đăng nhập */
+  gachaRules: () => request('/api/gacha/rules'),
 };

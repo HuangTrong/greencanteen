@@ -14,6 +14,16 @@ import { notifyAccount } from '../services/securityNotice.js';
 import { beginMfaLogin, isUserMfaEnabled, verifyUserSecondFactor } from '../services/userMfa.js';
 import { VERIFY_FAILURE_CODES, completeRegistration, resendVerification, startRegistration } from '../services/emailVerification.js';
 import {
+  RESET_CODE_LENGTH,
+  RESET_CODE_PATTERN,
+  claimResetCode,
+  consumeResetRecord,
+  isResetCodeEnabled,
+  issuePasswordReset,
+  normalizeResetCode,
+  releaseResetCodeAttempt,
+} from '../services/passwordReset.js';
+import {
   SESSION_COOKIE,
   clearCookie,
   cookieOptions,
@@ -58,7 +68,6 @@ const OAUTH_COOKIE = 'gc_oauth';
 const OAUTH_TTL_MS = 10 * 60 * 1000;
 const SIGNUP_COOKIE = 'gc_signup';
 const SIGNUP_TTL_MS = 15 * 60 * 1000;
-const RESET_TTL_MS = 30 * 60 * 1000;
 const RESET_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 
 const loginFailures = createRateLimiter({ name: 'login-fail', max: 10, windowMs: 15 * 60 * 1000 });
@@ -86,6 +95,9 @@ const verifyFailuresByIp = createRateLimiter({
 const resetRequestsByEmail = createRateLimiter({ name: 'reset-request-email', max: 5, windowMs: 60 * 60 * 1000 });
 const resetRequestsByIp = createRateLimiter({ name: 'reset-request-ip', max: 30, windowMs: 60 * 60 * 1000 });
 const resetFailuresByIp = createRateLimiter({ name: 'reset-fail-ip', max: 10, windowMs: 15 * 60 * 1000 });
+// Theo email người dùng NHẬP: mỗi email đặt lại có 5 lượt nhập mã và 5 email mỗi giờ, trần này chặn dò dần mã 6 số qua nhiều email trong ngày.
+// Bị chặn chỉ khóa đường nhập mã; liên kết trong email (token 256 bit) vẫn dùng được
+const resetCodeFailuresByEmail = createRateLimiter({ name: 'reset-code-fail-email', max: 10, windowMs: 24 * 60 * 60 * 1000 });
 
 /** Cần CAPTCHA mà lời giải không hợp lệ thì đã trả lời 403 và trả về false: trình duyệt tự giải rồi gửi lại, người dùng không phải làm gì */
 async function passCaptcha(req, res, needed) {
@@ -113,7 +125,8 @@ router.get('/providers', (_req, res) => {
       facebook: { enabled: isProviderConfigured('facebook') },
       qr: { enabled: isQrLoginEnabled() },
       // "Quên mật khẩu" cần gửi email; devConsole = chế độ phát triển, email chỉ được in ra log server
-      passwordReset: { enabled: email.enabled, devConsole: email.enabled && email.mode === 'console' },
+      // code: thư có thêm mã 6 số để nhập ngay trong popup (cần ADMIN_MFA_KEY làm khóa HMAC)
+      passwordReset: { enabled: email.enabled, devConsole: email.enabled && email.mode === 'console', code: email.enabled && isResetCodeEnabled() },
       // Đăng ký bằng email cần gửi được thư xác minh
       emailVerification: { enabled: email.enabled, devConsole: email.enabled && email.mode === 'console' },
     },
@@ -251,7 +264,9 @@ router.post('/login', async (req, res) => {
       const minutes = Math.ceil(loginFailuresByIp.windowMs / 60_000);
       return tooManyRequests(res, `Mạng của bạn có quá nhiều lần đăng nhập sai. Vui lòng thử lại sau ${minutes} phút, hoặc đăng nhập bằng Google, Facebook hay mã QR.`);
     }
-    if (await loginFailures.hit(email)) {
+    // Khóa bộ đếm theo email luôn là bản băm: ratelimits (và bản sao lưu DB) không giữ email người khác gõ vào (SEC-03)
+    const emailKey = hashToken(email);
+    if (await loginFailures.hit(emailKey)) {
       await loginFailuresByIp.release(ip);
       return tooManyRequests(res, 'Bạn đã đăng nhập sai quá nhiều lần. Vui lòng thử lại sau 15 phút.');
     }
@@ -264,7 +279,7 @@ router.post('/login', async (req, res) => {
         code: 'invalid_credentials',
       });
     }
-    await Promise.all([loginFailures.reset(email), loginFailuresByIp.release(ip)]);
+    await Promise.all([loginFailures.reset(emailKey), loginFailuresByIp.release(ip)]);
     // Chỉ báo sau khi mật khẩu đúng: người ngoài không dò được tài khoản nào đang bị khóa
     if (user.status === 'locked') throw accountLocked();
     if (await isUserMfaEnabled(user._id)) {
@@ -329,46 +344,64 @@ router.post('/reauth', requireAuth, async (req, res) => {
 
 const FORGOT_PASSWORD_MESSAGE =
   'Nếu email này thuộc một tài khoản GreenCanteen, liên kết đặt lại mật khẩu sẽ được gửi tới hộp thư trong vài phút. Liên kết có hiệu lực 30 phút và chỉ dùng được một lần.';
+const FORGOT_PASSWORD_CODE_MESSAGE =
+  `Nếu email này thuộc một tài khoản GreenCanteen, mã ${RESET_CODE_LENGTH} số và liên kết đặt lại mật khẩu sẽ được gửi tới hộp thư trong vài phút. Mã và liên kết có hiệu lực 30 phút, chỉ dùng được một lần.`;
 
 const RESET_INVALID = {
   error: 'Liên kết đặt lại mật khẩu không hợp lệ, đã hết hạn hoặc đã được sử dụng. Hãy yêu cầu liên kết mới.',
   code: 'reset_token_invalid',
 };
+// Một thông báo cho mọi trường hợp (sai mã, hết lượt, hết hạn, email không có tài khoản) → không lộ email nào có tài khoản
+const RESET_CODE_INVALID = {
+  error: 'Mã không đúng hoặc đã hết hạn. Kiểm tra lại mã trong email mới nhất, hoặc mở liên kết trong email đó.',
+  code: 'reset_code_invalid',
+};
+const RESET_FAILURES_IP_MESSAGE = 'Bạn đã thử quá nhiều liên kết hoặc mã không hợp lệ. Vui lòng thử lại sau 15 phút.';
+
+function passwordResetMail(user, link, code) {
+  const text = [
+    `Xin chào ${user.name},`,
+    '',
+    'Có yêu cầu đặt lại mật khẩu cho tài khoản GreenCanteen gắn với email này.',
+    ...(code
+      ? [
+          `Mã đặt lại mật khẩu (hiệu lực 30 phút): ${code}`,
+          '',
+          'Nhập mã này ở màn hình "Quên mật khẩu" trên GreenCanteen, hoặc mở liên kết sau để đặt mật khẩu mới:',
+        ]
+      : ['Mở liên kết sau trong vòng 30 phút để đặt mật khẩu mới (liên kết chỉ dùng được một lần):']),
+    '',
+    link,
+    '',
+    ...(code ? ['Mã và liên kết chỉ dùng được một lần. Không đưa mã cho bất kỳ ai, kể cả người tự nhận là quản trị viên GreenCanteen.'] : []),
+    'Nếu bạn không yêu cầu, hãy bỏ qua email này — mật khẩu hiện tại không thay đổi.',
+  ].join('\n');
+  const codeHtml = code
+    ? `<p>Mã đặt lại mật khẩu, nhập ở màn hình "Quên mật khẩu" (hiệu lực 30 phút):</p>
+<p style="font-size:28px;font-weight:700;letter-spacing:6px;font-family:monospace">${escapeHtml(code)}</p>
+<p>Hoặc mở liên kết:</p>`
+    : '<p>Liên kết có hiệu lực trong 30 phút và chỉ dùng được một lần:</p>';
+  const html = `<p>Xin chào ${escapeHtml(user.name)},</p>
+<p>Có yêu cầu đặt lại mật khẩu cho tài khoản GreenCanteen gắn với email này.</p>
+${codeHtml}
+<p><a href="${escapeHtml(link)}">Đặt mật khẩu mới</a></p>
+${code ? '<p>Mã và liên kết chỉ dùng được một lần. Không đưa mã cho bất kỳ ai, kể cả người tự nhận là quản trị viên GreenCanteen.</p>\n' : ''}<p>Nếu bạn không yêu cầu, hãy bỏ qua email này — mật khẩu hiện tại không thay đổi.</p>`;
+  return { text, html };
+}
 
 async function deliverPasswordReset(email) {
   try {
     const user = await User.findOne({ email }).select('_id name email');
     if (!user) return; // không có tài khoản: không làm gì — phản hồi đã gửi trước đó giống hệt trường hợp có tài khoản
 
-    const token = randomToken(32);
-    // Chỉ liên kết mới nhất còn hiệu lực
-    await PasswordReset.deleteMany({ userId: user._id });
-    await PasswordReset.create({
-      tokenHash: hashToken(token),
-      userId: user._id,
-      expiresAt: new Date(Date.now() + RESET_TTL_MS),
-    });
-
+    // Chỉ email mới nhất còn hiệu lực: yêu cầu mới thay cả liên kết lẫn mã cũ
+    const { token, code } = await issuePasswordReset(user._id);
     // Token nằm sau dấu # → trình duyệt không gửi nó lên server trong request hay header Referer
     const link = `${clientOrigin()}/profile#reset=${token}`;
-    const text = [
-      `Xin chào ${user.name},`,
-      '',
-      'Có yêu cầu đặt lại mật khẩu cho tài khoản GreenCanteen gắn với email này.',
-      'Mở liên kết sau trong vòng 30 phút để đặt mật khẩu mới (liên kết chỉ dùng được một lần):',
-      '',
-      link,
-      '',
-      'Nếu bạn không yêu cầu, hãy bỏ qua email này — mật khẩu hiện tại không thay đổi.',
-    ].join('\n');
-    const html = `<p>Xin chào ${escapeHtml(user.name)},</p>
-<p>Có yêu cầu đặt lại mật khẩu cho tài khoản GreenCanteen gắn với email này. Liên kết có hiệu lực trong 30 phút và chỉ dùng được một lần:</p>
-<p><a href="${escapeHtml(link)}">Đặt mật khẩu mới</a></p>
-<p>Nếu bạn không yêu cầu, hãy bỏ qua email này — mật khẩu hiện tại không thay đổi.</p>`;
-
+    const { text, html } = passwordResetMail(user, link, code);
     await sendEmail({ to: user.email, subject: 'Đặt lại mật khẩu GreenCanteen', text, html });
   } catch (err) {
-    // Không ghi token hay địa chỉ email vào log
+    // Không ghi token, mã hay địa chỉ email vào log
     console.error('Gửi email đặt lại mật khẩu thất bại:', mailFailureCode(err));
   }
 }
@@ -391,7 +424,7 @@ router.post('/password/forgot', async (req, res) => {
 
     // Đếm theo email người dùng NHẬP (dù có tài khoản hay không) → lỗi giới hạn cũng không lộ email nào tồn tại
     const [emailLimited, ipLimited] = await Promise.all([
-      resetRequestsByEmail.hit(email),
+      resetRequestsByEmail.hit(hashToken(email)),
       resetRequestsByIp.hit(clientIpKey(req)),
     ]);
     if (emailLimited || ipLimited) {
@@ -399,20 +432,46 @@ router.post('/password/forgot', async (req, res) => {
     }
     await noteMailRequest();
 
-    // Trả lời ngay, giống hệt nhau cho mọi email; tra cứu và gửi thư chạy sau → thời gian phản hồi cũng không lộ
-    res.status(202).json({ ok: true, message: FORGOT_PASSWORD_MESSAGE, devConsole: delivery.mode === 'console' });
+    // Trả lời ngay, giống hệt nhau cho mọi email; tra cứu và gửi thư chạy sau → thời gian phản hồi cũng không lộ.
+    // codeLength chỉ phụ thuộc cấu hình máy chủ, không phụ thuộc email có tài khoản hay không
+    const withCode = isResetCodeEnabled();
+    res.status(202).json({
+      ok: true,
+      message: withCode ? FORGOT_PASSWORD_CODE_MESSAGE : FORGOT_PASSWORD_MESSAGE,
+      devConsole: delivery.mode === 'console',
+      codeLength: withCode ? RESET_CODE_LENGTH : 0,
+    });
     setImmediate(() => deliverPasswordReset(email));
   } catch (e) {
     sendAccountError(res, e, 'Không thể xử lý yêu cầu.');
   }
 });
 
+/** Bước chung sau khi liên kết hoặc mã đã được tiêu: lưu mật khẩu, đăng xuất mọi thiết bị, rồi mở phiên mới (hoặc bước 2FA) cho trình duyệt này */
+async function finishPasswordReset(req, res, user, password, method) {
+  user.passwordHash = await hashPassword(password);
+  user.passwordChangedAt = new Date();
+  await user.save();
+  await PasswordReset.deleteMany({ userId: user._id });
+  // Có thể mật khẩu cũ đã lộ → đăng xuất mọi thiết bị, rồi mở phiên mới cho trình duyệt này
+  await revokeUserSessions(user._id);
+  if (user.email) await loginFailures.reset(hashToken(user.email));
+  await auditAccount(req, user, 'account.password_reset', { method });
+  notifyAccount(user, 'password_reset');
+  if (user.status === 'locked') throw accountLocked();
+  // Chiếm được hộp thư không được đồng nghĩa với vượt qua 2FA
+  if (await isUserMfaEnabled(user._id)) {
+    await beginMfaLogin(res, user);
+    return res.json({ mfaRequired: true });
+  }
+  await startSession(req, res, user);
+  return res.json({ user: serializeUser(user) });
+}
+
 router.post('/password/reset', async (req, res) => {
   try {
     const ip = clientIpKey(req);
-    if (await resetFailuresByIp.isLimited(ip)) {
-      return tooManyRequests(res, 'Bạn đã thử quá nhiều liên kết không hợp lệ. Vui lòng thử lại sau 15 phút.');
-    }
+    if (await resetFailuresByIp.isLimited(ip)) return tooManyRequests(res, RESET_FAILURES_IP_MESSAGE);
     const { token, password } = req.body;
     const invalidPassword = validatePassword(password);
     if (invalidPassword) return res.status(400).json({ error: invalidPassword, code: 'invalid_input' });
@@ -435,24 +494,50 @@ router.post('/password/reset', async (req, res) => {
       await resetFailuresByIp.hit(ip);
       return res.status(400).json(RESET_INVALID);
     }
+    return await finishPasswordReset(req, res, user, password, 'link');
+  } catch (e) {
+    sendAccountError(res, e, 'Không thể đặt lại mật khẩu.');
+  }
+});
 
-    user.passwordHash = await hashPassword(password);
-    user.passwordChangedAt = new Date();
-    await user.save();
-    await PasswordReset.deleteMany({ userId: user._id });
-    // Có thể mật khẩu cũ đã lộ → đăng xuất mọi thiết bị, rồi mở phiên mới cho trình duyệt này
-    await revokeUserSessions(user._id);
-    if (user.email) await loginFailures.reset(user.email);
-    await auditAccount(req, user, 'account.password_reset');
-    notifyAccount(user, 'password_reset');
-    if (user.status === 'locked') throw accountLocked();
-    // Chiếm được hộp thư không được đồng nghĩa với vượt qua 2FA
-    if (await isUserMfaEnabled(user._id)) {
-      await beginMfaLogin(res, user);
-      return res.json({ mfaRequired: true });
+// Mã 6 số trong cùng email: đặt mật khẩu ngay trong popup, không cần mở liên kết trên đúng thiết bị đang đăng nhập
+router.post('/password/reset-code', async (req, res) => {
+  try {
+    if (!isResetCodeEnabled()) {
+      return res.status(503).json({ error: 'Máy chủ chưa bật mã đặt lại mật khẩu. Hãy mở liên kết trong email.', code: 'reset_code_unavailable' });
     }
-    await startSession(req, res, user);
-    res.json({ user: serializeUser(user) });
+    const ip = clientIpKey(req);
+    if (await resetFailuresByIp.isLimited(ip)) return tooManyRequests(res, RESET_FAILURES_IP_MESSAGE);
+    const { password } = req.body;
+    const email = normalizeEmail(req.body.email);
+    const code = normalizeResetCode(req.body.code);
+    const invalid = validateEmail(email) || validatePassword(password);
+    if (invalid) return res.status(400).json({ error: invalid, code: 'invalid_input' });
+
+    // Đếm theo email người dùng NHẬP (có tài khoản hay không) nên lỗi giới hạn không lộ gì
+    const emailKey = hashToken(email);
+    if (await resetCodeFailuresByEmail.isLimited(emailKey)) {
+      return tooManyRequests(res, 'Đã nhập sai mã quá nhiều lần với email này. Hãy mở liên kết trong email đặt lại mật khẩu, hoặc thử lại sau 24 giờ.');
+    }
+    const fail = async () => {
+      await Promise.all([resetFailuresByIp.hit(ip), resetCodeFailuresByEmail.hit(emailKey)]);
+      return res.status(400).json(RESET_CODE_INVALID);
+    };
+    if (!RESET_CODE_PATTERN.test(code)) return await fail();
+
+    const user = await User.findOne({ email });
+    const record = await claimResetCode(user?._id, code);
+    if (!user || !record) return await fail();
+
+    // Chỉ kiểm tra mật khẩu theo thông tin cá nhân SAU khi đúng mã: làm trước thì lỗi này lộ email có tài khoản và họ tên của chủ tài khoản
+    const personal = validatePassword(password, user);
+    if (personal) {
+      await releaseResetCodeAttempt(record);
+      return res.status(400).json({ error: personal, code: 'invalid_input' });
+    }
+    if (!(await consumeResetRecord(record))) return await fail();
+    await resetCodeFailuresByEmail.reset(emailKey);
+    return await finishPasswordReset(req, res, user, password, 'code');
   } catch (e) {
     sendAccountError(res, e, 'Không thể đặt lại mật khẩu.');
   }

@@ -103,7 +103,9 @@ async function deleteUser(values) {
   const user = await findAccountToDelete({ email: values.email, studentId: values['student-id'] });
   const { checkIns, rewards } = await countAccountData(user);
   console.log(`Tài khoản: ${user.name}, mã SV ${user.studentId}, email ${maskEmail(user.email) || '(không có)'}.`);
-  console.log(`Sẽ xóa tài khoản, ảnh đại diện, ${checkIns} lượt check-in, ${rewards} mã nạp, phiên đăng nhập, passkey và 2FA. Nhật ký bảo mật được giữ lại.`);
+  console.log(
+    `Sẽ xóa tài khoản, ảnh đại diện, ${checkIns} lượt check-in, ${rewards} kết quả quay thưởng (gồm móc khóa chưa nhận và mã nạp demo cũ), phiên đăng nhập, passkey và 2FA. Nhật ký bảo mật được giữ lại; mã băm các ảnh đã được thưởng được giữ nhưng không còn gắn với tài khoản.`
+  );
   const answer = await readHidden('Không hoàn tác được. Gõ lại mã sinh viên (ký tự không hiện ra) rồi Enter để xác nhận: ');
   if (answer.trim() !== user.studentId) throw new Error('Mã không khớp, chưa xóa gì.');
   await deleteAccount(user);

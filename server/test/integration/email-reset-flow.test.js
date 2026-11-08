@@ -49,7 +49,8 @@ beforeEach(async () => {
 
 describe('quên mật khẩu qua SMTP', () => {
   test('đã cấu hình: nút "Quên mật khẩu" bật, không phải chế độ console', async () => {
-    assert.deepEqual((await client().get('/api/auth/providers')).data.providers.passwordReset, { enabled: true, devConsole: false });
+    // code: false vì test này không đặt ADMIN_MFA_KEY (mã 6 số: password-reset-code.test.js)
+    assert.deepEqual((await client().get('/api/auth/providers')).data.providers.passwordReset, { enabled: true, devConsole: false, code: false });
   });
 
   test('email có tài khoản: thư tới đúng người, liên kết sau dấu #, tên được thoát HTML, DB chỉ lưu băm', async () => {

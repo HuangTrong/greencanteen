@@ -37,7 +37,7 @@ describe('Trang chủ — thống kê toàn trường', () => {
       'GET /api/auth/me': () => (session.user ? json({ user: session.user }) : LOGGED_OUT['GET /api/auth/me']),
       'GET /api/auth/providers': json(PROVIDERS),
       'GET /api/checkin/history': json({ history: [] }),
-      'GET /api/gacha/rewards': json({ pendingGachaSpins: 0, rewards: [] }),
+      'GET /api/gacha/results': json({ pendingGachaSpins: 0, stats: { spins: 0, wins: 0 }, rewards: [] }),
       'GET /api/stats/school': json(SCHOOL),
       'POST /api/auth/logout': () => {
         session.user = null;

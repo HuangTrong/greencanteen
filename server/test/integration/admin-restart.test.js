@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import mongoose from 'mongoose';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import { GachaReward } from '../../src/models/GachaReward.js';
+import { createMedia } from '../gachaHelpers.js';
 import { Story } from '../../src/models/Story.js';
 import { User } from '../../src/models/User.js';
 import { bootstrapFirstAdmin } from '../../src/services/adminBootstrap.js';
@@ -92,12 +93,12 @@ after(async () => {
   await mem.stop();
 });
 
-test('thay đổi câu chuyện, cấu hình Gacha, thiết lập và nhật ký còn nguyên qua hai lần khởi động lại', { timeout: 120_000 }, async () => {
+test('thay đổi câu chuyện, cấu hình quay thưởng tri ân, thiết lập và nhật ký còn nguyên qua hai lần khởi động lại', { timeout: 120_000 }, async () => {
   const base = `http://127.0.0.1:${port}`;
   const [firstSeed, secondSeed] = loadSeedStories();
 
   let server = await startServer();
-  assert.match(server.output(), /Gacha: đã tạo cấu hình phiên bản 1/);
+  assert.match(server.output(), /Quay thưởng tri ân đang tạm dừng/, "không tự tạo cấu hình quay thưởng");
 
   const { user, enrollCode } = await bootstrapFirstAdmin({ email: 'can-bo-canteen@example.edu.vn', name: 'Cán Bộ Căn Tin', password });
   const admin = adminClient(base);
@@ -115,10 +116,11 @@ test('thay đổi câu chuyện, cấu hình Gacha, thiết lập và nhật ký
   assert.equal((await admin.post(`/api/admin/stories/${removed.id}/unpublish`, { json: { revision: removed.revision } })).status, 200);
   assert.equal((await admin.post('/api/admin/stories', { json: { slug: 'nhap-qua-khoi-dong', title: 'Nháp chưa có nguồn' } })).status, 201);
 
-  // Xuất bản cấu hình Gacha mới
+  // Xuất bản cấu hình quay thưởng tri ân mới (ảnh móc khóa ghi thẳng DB dùng chung với server)
+  const image = await createMedia();
   const draft = (await admin.post('/api/admin/gacha/configs', { json: {} })).data;
-  const prizes = [{ prizeId: 'chi-20k', label: 'Mã nạp điện thoại', carrier: 'Viettel', amountVnd: 20_000, probabilityPpm: 1_000_000, enabled: true, maxQuantity: 100 }];
-  const saved = await admin.put(`/api/admin/gacha/configs/${draft.id}`, { json: { prizes, revision: draft.revision } });
+  const prizes = [{ prizeId: 'moc-khoa-la', label: 'Lá xanh', imageId: image._id.toString(), probabilityPpm: 1_000_000, enabled: true, maxQuantity: 100 }];
+  const saved = await admin.put(`/api/admin/gacha/configs/${draft.id}`, { json: { prizes, claimInstructions: 'Nhận tại quầy căn tin', revision: draft.revision } });
   assert.equal((await admin.post(`/api/admin/gacha/configs/${draft.id}/publish`, { json: { revision: saved.data.revision } })).status, 200);
 
   // Thiết lập website
@@ -128,7 +130,7 @@ test('thay đổi câu chuyện, cấu hình Gacha, thiết lập và nhật ký
   });
   assert.equal(settings.status, 200);
 
-  // Sinh viên quay Gacha theo cấu hình mới
+  // Sinh viên quay thưởng theo cấu hình mới
   const student = createClient(base);
   const form = { name: 'Sinh Viên Khởi Động', studentId: 'SV-KHOI-DONG', email: 'sv-khoi-dong@example.edu.vn', password: 'mat-khau-an-toan-1' };
   assert.equal((await student.post('/api/auth/register', { json: form })).status, 202);
@@ -136,7 +138,7 @@ test('thay đổi câu chuyện, cấu hình Gacha, thiết lập và nhật ký
   for (let i = 0; i < 50 && !VERIFY_TOKEN.test(server.output()); i += 1) await new Promise((resolve) => setTimeout(resolve, 50));
   const reg = await student.post('/api/auth/email/verify', { json: { token: server.output().match(VERIFY_TOKEN)[1], password: form.password } });
   await User.updateOne({ _id: reg.data.user.id }, { $set: { pendingGachaSpins: 1 } });
-  assert.equal((await student.post('/api/gacha/spin')).data.prize.amountVnd, 20_000);
+  assert.equal((await student.post('/api/gacha/draw')).data.prize.label, 'Lá xanh');
 
   for (let restart = 1; restart <= 2; restart += 1) {
     await stopServer(server);
@@ -149,12 +151,13 @@ test('thay đổi câu chuyện, cấu hình Gacha, thiết lập và nhật ký
     assert.equal((await createClient(base).get('/api/site/settings')).data.heroTitle, 'Tiêu đề do admin đặt');
 
     await User.updateOne({ _id: reg.data.user.id }, { $set: { pendingGachaSpins: 1 } });
-    assert.equal((await student.post('/api/gacha/spin')).data.prize.amountVnd, 20_000, 'cấu hình mới vẫn có hiệu lực');
+    assert.doesNotMatch(server.output(), /Quay thưởng tri ân đang tạm dừng/);
+    assert.equal((await student.post('/api/gacha/draw')).data.prize.label, 'Lá xanh', 'cấu hình mới vẫn có hiệu lực');
   }
 
   const rewards = await GachaReward.find({ userId: reg.data.user.id }).lean();
   assert.equal(rewards.length, 3);
-  assert.ok(rewards.every((reward) => reward.configVersion === draft.version && reward.prizeId === 'chi-20k'));
+  assert.ok(rewards.every((reward) => reward.configVersion === draft.version && reward.prizeId === 'moc-khoa-la' && reward.outcome === 'win'));
 
   // Phiên quản trị lưu trong DB nên còn dùng được sau khởi động lại; nhật ký còn đủ
   const logs = await admin.get('/api/admin/audit-logs?pageSize=100');

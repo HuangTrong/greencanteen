@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#16a34a" />
+    <meta name="description" content="Thể lệ quay thưởng tri ân của GreenCanteen: cách nhận lượt quay, cách rút thăm, mẫu móc khóa, xác suất và số lượng đang áp dụng, cách nhận quà." />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="stylesheet" href="/src/index.css" />
+    <title>Thể lệ quay thưởng tri ân · GreenCanteen</title>
+  </head>
+  <body class="bg-leaf-50 antialiased">
+    <div class="mx-auto flex min-h-dvh max-w-lg flex-col bg-gradient-to-b from-leaf-50 to-white">
+      <header class="border-b border-leaf-100/80 bg-white/90 px-4 py-3">
+        <a href="/" class="flex items-center gap-2">
+          <span class="flex h-9 w-9 items-center justify-center rounded-xl bg-leaf-600 text-lg text-white shadow-sm" aria-hidden="true">🌿</span>
+          <span class="text-lg font-extrabold tracking-tight text-leaf-800">GreenCanteen</span>
+        </a>
+      </header>
+
+      <main class="legal flex-1 px-4 pb-10 pt-6">
+        <h1>Thể lệ quay thưởng tri ân</h1>
+        <p>Cập nhật lần cuối: 07/11/2026</p>
+        <p class="legal-notice">
+          <strong>Quà là móc khóa GreenCanteen phiên bản đặc biệt, trúng hay không hoàn toàn do may mắn.</strong> Phần lớn lượt quay sẽ
+          không trúng. Xác suất và số móc khóa còn lại của từng mẫu được công bố ở mục 6.
+        </p>
+
+        <h2>1. Mục đích</h2>
+        <p>
+          Quay thưởng tri ân cảm ơn người dùng bình, ly cá nhân khi mua đồ uống ở căn tin. Mỗi lần check-in hợp lệ được một lượt quay để có
+          cơ hội nhận móc khóa.
+        </p>
+
+        <h2>2. Đơn vị tổ chức</h2>
+        <p class="legal-pending" data-pending="organizer">
+          <strong>Chưa công bố.</strong> Không đủ dữ liệu để xác minh đơn vị tổ chức, chịu trách nhiệm về quay thưởng tri ân, nguồn kinh
+          phí và giá trị của móc khóa.
+        </p>
+
+        <h2>3. Ai được tham gia, chi phí</h2>
+        <ul>
+          <li>Người có tài khoản GreenCanteen không bị khóa.</li>
+          <li>
+            Không thu phí tham gia. Việc nhận lượt quay không gắn với việc mua hàng hóa, dịch vụ. GreenCanteen không bán lượt quay và
+            Eco-points không đổi được lượt quay.
+          </li>
+        </ul>
+
+        <h2>4. Cách nhận lượt quay</h2>
+        <ul>
+          <li>Mỗi check-in hợp lệ được cộng 1 lượt quay (điều kiện check-in hợp lệ xem <a href="/operating-rules.html">Quy chế hoạt động</a>).</li>
+          <li>Lượt quay được lưu trong tài khoản, không có hạn dùng và không chuyển được sang tài khoản khác.</li>
+          <li>Lượt quay chưa dùng mất đi khi tài khoản bị xóa.</li>
+        </ul>
+
+        <h2>5. Cách rút thăm</h2>
+        <ul>
+          <li>Bấm "Quay thưởng tri ân" trong cửa sổ sau khi check-in hoặc bấm "Quay thưởng" ở trang Cá nhân.</li>
+          <li>
+            Máy chủ rút một số trong 1.000.000 số bằng bộ sinh số ngẫu nhiên an toàn mật mã. Mỗi mẫu móc khóa chiếm một khoảng số đúng bằng
+            xác suất công bố: số rơi vào khoảng của mẫu nào thì trúng mẫu đó, rơi ra ngoài mọi khoảng là không trúng. Trình duyệt không
+            quyết định được kết quả. Không dùng kết quả xổ số.
+          </li>
+          <li>
+            Mỗi lượt độc lập với các lượt khác: kết quả không phụ thuộc người quay, số lượt đã quay hay đã trúng trước đó. Không có cơ chế bảo
+            đảm trúng sau nhiều lượt.
+          </li>
+          <li>Hiệu ứng quay, sticker và hình động ở màn hình kết quả chỉ để trang trí, được chọn sau khi đã có kết quả.</li>
+          <li>Lượt quay chỉ bị trừ cùng lúc với việc ghi nhận kết quả. Cả lượt trúng và lượt không trúng đều được lưu cùng phiên bản cấu hình đã tạo ra kết quả.</li>
+        </ul>
+
+        <h2>6. Mẫu móc khóa, xác suất và số lượng đang áp dụng</h2>
+        <div data-gacha-config>
+          <p data-gacha-status>Cần bật JavaScript để xem các mẫu móc khóa theo cấu hình đang áp dụng.</p>
+          <p data-gacha-summary hidden></p>
+          <div class="legal-table">
+            <table hidden>
+              <thead>
+                <tr>
+                  <th scope="col">Mẫu móc khóa</th>
+                  <th scope="col">Xác suất mỗi lượt</th>
+                  <th scope="col">Còn lại</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+        <ul>
+          <li>Tổng xác suất trúng của các mẫu không quá 100%; phần còn lại là không trúng.</li>
+          <li>
+            Mẫu đã hết thì phần xác suất của mẫu đó tính là không trúng, xác suất các mẫu khác không đổi. Hai lượt cùng trúng chiếc móc khóa
+            cuối cùng của một mẫu: lượt được ghi nhận sau tính là không trúng.
+          </li>
+          <li>Tất cả các mẫu đều đã hết: hệ thống không cho quay và giữ nguyên lượt của bạn.</li>
+          <li>
+            Quản trị viên có thể xuất bản phiên bản cấu hình mới. Phiên bản đã xuất bản không sửa được; mục này luôn hiển thị phiên bản đang
+            hiệu lực tại lúc bạn mở trang.
+          </li>
+        </ul>
+
+        <h2>7. Nhận quà</h2>
+        <ul>
+          <li>
+            Trúng thưởng, màn hình kết quả hiện mã nhận quà dạng TA-XXXXX-XXXXX. Mã cũng nằm trong mục "Quay thưởng tri ân" ở trang Cá nhân
+            cùng trạng thái "Chờ nhận" hoặc "Đã nhận".
+          </li>
+          <li>
+            Khi trao quà, quản trị viên tra đúng mã nhận quà, đối chiếu tài khoản của bạn rồi đánh dấu đã trao. Để trao quà, quản trị viên xem
+            được mã nhận quà, tên và mã sinh viên đã che một phần của người trúng.
+          </li>
+          <li>GreenCanteen không có chức năng đổi móc khóa thành tiền hay quà khác. Hệ thống không tự hủy mã nhận quà.</li>
+          <li>Quà chưa nhận không còn nhận được sau khi tài khoản bị xóa.</li>
+        </ul>
+        <p><strong>Hướng dẫn nhận quà của phiên bản đang áp dụng</strong> (nơi nhận, thời gian, hạn nhận do quản trị viên công bố):</p>
+        <p class="whitespace-pre-line" data-gacha-claim>Cần bật JavaScript để xem hướng dẫn nhận quà.</p>
+
+        <h2>8. Mã nạp demo trước đây</h2>
+        <p>
+          Trước khi đổi sang móc khóa, phần thưởng là mã nạp điện thoại demo do máy chủ GreenCanteen tự tạo: không phải mã của nhà mạng,
+          không nạp được tiền vào điện thoại, không có giá trị quy đổi. Các mã đã phát vẫn xem được ở trang Cá nhân, mục "Mã nạp demo cũ".
+        </p>
+
+        <h2>9. Thay đổi, tạm dừng, kết thúc</h2>
+        <p>
+          Phiên bản cấu hình có thể có thời điểm bắt đầu, kết thúc hoặc được ngừng hiệu lực sớm. Khi đó hệ thống dùng phiên bản còn hiệu lực
+          gần nhất, hoặc tạm dừng quay thưởng nếu không còn phiên bản nào; lượt quay đã nhận không mất, móc khóa đã trúng vẫn được trao.
+        </p>
+
+        <h2>10. Khiếu nại</h2>
+        <p>
+          Gửi theo trang <a href="/complaints.html">Tiếp nhận và giải quyết khiếu nại, tranh chấp</a>, kèm thời điểm quay, mã nhận quà (nếu
+          có) và ảnh chụp màn hình.
+        </p>
+      </main>
+      <!--legal-footer-->
+    </div>
+    <script type="module" src="/src/legalPage.js"></script>
+    <script type="module" src="/src/gachaRules.js"></script>
+  </body>
+</html>

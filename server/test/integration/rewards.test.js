@@ -10,6 +10,7 @@ import { RateLimit } from '../../src/models/RateLimit.js';
 import { uploadDir } from '../../src/routes/checkin.js';
 import { syncStories } from '../../src/services/stories.js';
 import { recoverOutboxes } from '../../src/services/rewards.js';
+import { publishKeychainConfig } from '../gachaHelpers.js';
 import {
   createClient,
   imageForm,
@@ -19,7 +20,6 @@ import {
   startTestServer,
   uniquePng,
 } from '../helpers.js';
-import { startFakeOllama } from '../fakes/ollama.js';
 
 let ctx;
 let uploadsBefore;
@@ -145,45 +145,11 @@ describe('check-in: server quyết định kết quả', () => {
     // Mô phỏng bị chặn khi production → dùng bộ nhận diện thật; thư mục mô hình trống → chưa sẵn sàng, không thưởng
     setEnv({ VISION_SIMULATION: 'true', NODE_ENV: 'production', VISION_MODEL_DIR: 'test/.khong-co-mo-hinh' });
     const status = (await c.get('/api/checkin/status')).data;
-    assert.deepEqual([status.mode, status.engine], ['local', 'ensemble']);
+    assert.deepEqual([status.mode, status.engine], ['local', 'classifier']);
     const blocked = await checkIn(c);
     assert.equal(blocked.status, 503, 'mô phỏng bị chặn trong production');
     assert.equal(blocked.data.code, 'vision_not_configured');
     assert.equal(await CheckIn.countDocuments({ userId: id }), 0);
-  });
-
-  test('bộ nhận diện local (Ollama) lỗi hoặc phản hồi sai schema: không thưởng, không ghi nhận', async () => {
-    const { c, id } = await loggedInUser();
-    const ollama = await startFakeOllama();
-    try {
-      setEnv({ VISION_ENGINE: 'ollama', VISION_OLLAMA_URL: ollama.url });
-      ollama.reply = { status: 500, error: 'model runner has unexpectedly stopped' };
-      const providerError = await checkIn(c);
-      assert.equal(providerError.status, 502);
-      assert.equal(providerError.data.code, 'vision_provider_error');
-
-      ollama.reply = { category: 'reusable_bottle', confidence: 'cao', reason: 'x' };
-      const badSchema = await checkIn(c);
-      assert.equal(badSchema.status, 502);
-      assert.equal(badSchema.data.code, 'vision_invalid_response');
-
-      ollama.reply = { category: 'reusable_bottle', confidence: 0.95, reason: 'Bình giữ nhiệt inox' };
-      const image = uniquePng();
-      const ok = await checkIn(c, image);
-      assert.equal(ok.status, 200);
-      assert.equal(ok.data.classification.status, 'classified');
-      assert.equal(ok.data.classification.simulated, false);
-      assert.equal((await CheckIn.findById(ok.data.checkInId).lean()).verification, 'local');
-      // Lần nhìn thứ nhất là ảnh gốc, lần thứ hai là bản đã làm mờ chữ; cả hai chỉ tới máy local
-      assert.deepEqual(ollama.requests.at(-2).messages[0].images, [image.toString('base64')], 'ảnh chỉ được gửi tới máy local');
-      assert.notDeepEqual(ollama.requests.at(-1).messages[0].images, [image.toString('base64')]);
-    } finally {
-      await ollama.close();
-    }
-
-    const user = await User.findById(id).lean();
-    assert.equal(user.ecoPoints, 10, 'chỉ lần nhận diện hợp lệ được cộng');
-    assert.equal(await CheckIn.countDocuments({ userId: id }), 1);
   });
 
   test('biên dung lượng ảnh: đúng bằng giới hạn được nhận, hơn 1 byte bị từ chối', async () => {
@@ -232,28 +198,28 @@ describe('check-in: server quyết định kết quả', () => {
   });
 });
 
-describe('Gacha', () => {
+describe('quay thưởng tri ân', () => {
   test('một lượt quay không thể dùng nhiều lần khi gửi đồng thời', async () => {
     const { c, id } = await loggedInUser();
-    assert.equal(await GachaConfig.countDocuments(), 0, 'kiểm thử bắt đầu trước khi có cấu hình Gacha');
+    const config = await publishKeychainConfig();
     await User.updateOne({ _id: id }, { $set: { pendingGachaSpins: 1 } });
-    const results = await Promise.all(Array.from({ length: 10 }, () => c.post('/api/gacha/spin')));
+    const results = await Promise.all(Array.from({ length: 10 }, () => c.post('/api/gacha/draw')));
     const statuses = results.map((r) => r.status);
     assert.equal(statuses.filter((s) => s === 200).length, 1);
     assert.equal(statuses.filter((s) => s === 400).length, 9);
     assert.equal(await GachaReward.countDocuments({ userId: id }), 1);
     assert.equal((await User.findById(id).lean()).pendingGachaSpins, 0);
-    assert.equal(await GachaConfig.countDocuments(), 1, 'chỉ một cấu hình mặc định được tạo đồng thời');
-    assert.equal(await GachaReward.countDocuments({ userId: id, configVersion: 1 }), 1);
+    assert.equal(await GachaConfig.countDocuments(), 1, 'không tự tạo thêm cấu hình');
+    assert.equal(await GachaReward.countDocuments({ userId: id, configVersion: config.version }), 1);
 
     await User.updateOne({ _id: id }, { $set: { pendingGachaSpins: 3 } });
-    const more = await Promise.all(Array.from({ length: 10 }, () => c.post('/api/gacha/spin')));
+    const more = await Promise.all(Array.from({ length: 10 }, () => c.post('/api/gacha/draw')));
     assert.equal(more.filter((r) => r.status === 200).length, 3);
-    assert.equal(await GachaReward.countDocuments({ userId: id }), 4);
-    assert.equal(await GachaReward.countDocuments({ userId: id, configVersion: 1 }), 4);
+    assert.equal(await GachaReward.countDocuments({ userId: id, configVersion: config.version }), 4);
 
-    const list = await c.get('/api/gacha/rewards');
+    const list = await c.get('/api/gacha/results');
     assert.equal(list.data.rewards.length, 4);
+    assert.deepEqual(list.data.stats, { spins: 4, wins: 4 });
     assert.equal(list.data.pendingGachaSpins, 0);
   });
 });
@@ -271,13 +237,13 @@ describe('khôi phục sau khi server dừng giữa chừng', () => {
         $inc: { ecoPoints: 10, totalCheckIns: 1 },
         $push: {
           checkInOutbox: { _id: checkInId, studentId: 'x', valid: true, pointsEarned: 10, plasticSavedGrams: 12, createdAt: now },
-          gachaOutbox: { _id: rewardId, studentId: 'x', carrier: 'Viettel', amountVnd: 10000, topUpCode: 'GC-10K-TEST', createdAt: now },
+          gachaOutbox: { _id: rewardId, studentId: 'x', outcome: 'win', prizeType: 'keychain', prizeLabel: 'Lá xanh', claimCode: 'TA-23456-789AB', deliveryStatus: 'pending', createdAt: now },
         },
       }
     );
 
     assert.equal((await c.get('/api/checkin/history')).data.history.length, 1);
-    assert.equal((await c.get('/api/gacha/rewards')).data.rewards.length, 1);
+    assert.equal((await c.get('/api/gacha/results')).data.rewards.length, 1);
 
     await recoverOutboxes();
     await recoverOutboxes();

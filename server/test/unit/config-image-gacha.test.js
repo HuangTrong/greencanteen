@@ -1,9 +1,9 @@
-// Cấu hình môi trường, kiểm tra ảnh theo nội dung tệp và giải thưởng Gacha
+// Cấu hình môi trường, kiểm tra ảnh theo nội dung tệp (ảnh check-in và ảnh quay thưởng tri ân)
 import { afterEach, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { clientOrigin, env, envFlag, envNumber, isProduction } from '../../src/services/config.js';
 import { ACCEPTED_IMAGE_TYPES, detectImageType, inspectImage, sha256 } from '../../src/services/image.js';
-import { GACHA_PRIZE_TYPE, rollPhoneTopUpPrize } from '../../src/services/gacha.js';
+import { inspectMedia } from '../../src/services/gachaMedia.js';
 import { setEnv, uniquePng } from '../helpers.js';
 
 afterEach(() => {
@@ -119,18 +119,15 @@ describe('nhận diện loại ảnh theo nội dung (magic bytes)', () => {
   });
 });
 
-describe('Gacha — mã nạp điện thoại', () => {
-  test('mệnh giá, nhà mạng trong tập cho phép; mã khớp mệnh giá; không trùng', () => {
-    const prizes = Array.from({ length: 400 }, rollPhoneTopUpPrize);
-    const amounts = new Set(prizes.map((p) => p.amountVnd));
-    const carriers = new Set(prizes.map((p) => p.carrier));
-    assert.deepEqual([...amounts].sort((a, b) => a - b), [10_000, 20_000, 50_000]);
-    assert.deepEqual([...carriers].sort(), ['Mobifone', 'Viettel', 'Vinaphone', 'Đa mạng'].sort());
-    for (const p of prizes) {
-      assert.equal(p.prizeType, GACHA_PRIZE_TYPE);
-      assert.match(p.topUpCode, /^GC-(10|20|50)K-[0-9A-F]{8}$/);
-      assert.equal(p.topUpCode.split('-')[1], `${p.amountVnd / 1000}K`);
+describe('ảnh quay thưởng tri ân do quản trị viên tải lên', () => {
+  test('nhận thêm GIF (sticker động) nhưng ảnh check-in vẫn không nhận GIF; tệp giả ảnh bị từ chối', async () => {
+    assert.equal(inspectMedia(Buffer.from('GIF89a......')), 'image/gif');
+    assert.equal(inspectMedia(Buffer.from('GIF87a......')), 'image/gif');
+    assert.equal(inspectImage(Buffer.from('GIF89a......')).status, 415);
+    assert.equal(inspectMedia(await uniquePng()), 'image/png');
+    for (const content of ['<svg onload="alert(1)"/>', '%PDF-1.7', 'GIF90a']) {
+      assert.throws(() => inspectMedia(Buffer.from(content)), (err) => err.status === 415);
     }
-    assert.equal(new Set(prizes.map((p) => p.topUpCode)).size, prizes.length);
+    assert.throws(() => inspectMedia(undefined), (err) => err.code === 'image_empty');
   });
 });

@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { setCsrfToken } from '../../src/admin/adminApi';
 import { deferred, json, mockApi } from '../helpers';
-import { GACHA_DRAFT, LOGGED_IN, OVERVIEW, PRIZE, REAUTH_REQUIRED, STORY, USER_DETAIL, USER_ROW, renderAdmin } from './helpers';
+import { GACHA_DRAFT, LOGGED_IN, MEDIA, OVERVIEW, PRIZE, REAUTH_REQUIRED, STORY, USER_DETAIL, USER_ROW, renderAdmin } from './helpers';
 
 beforeEach(() => setCsrfToken(''));
 
@@ -12,7 +12,8 @@ describe('Tổng quan', () => {
   test('hiển thị số liệu, đơn vị, múi giờ và định nghĩa; ô tóm tắt định dạng tiếng Việt', async () => {
     mockApi({ ...LOGGED_IN, 'GET /api/admin/overview': json(OVERVIEW) });
     renderAdmin('/');
-    expect(await screen.findByText('450.000 ₫')).toBeInTheDocument();
+    expect(await screen.findByText('Lượt trúng móc khóa', { selector: 'p, span, dt, h3, div' })).toBeInTheDocument();
+    expect(screen.getByText('Lượt quay thưởng tri ân', { selector: 'p, span, dt, h3, div' }).parentElement).toHaveTextContent('30');
     expect(screen.getByText('Tổng tài khoản').parentElement).toHaveTextContent('120');
     expect(screen.getByText('Tổng tài khoản').parentElement).toHaveTextContent('5 mới trong kỳ, 2 đang khóa');
     expect(screen.getByText(/giờ Việt Nam \(UTC\+7\)/)).toBeInTheDocument();
@@ -20,7 +21,7 @@ describe('Tổng quan', () => {
     expect(screen.getByText(/Múi giờ Asia\/Ho_Chi_Minh/)).toBeInTheDocument();
   });
 
-  test('doanh thu, chi phí, lợi nhuận: "Chưa có nguồn dữ liệu", không có con số; mệnh giá được ghi rõ không phải doanh thu', async () => {
+  test('doanh thu, chi phí, lợi nhuận: "Chưa có nguồn dữ liệu", không có con số; quà quay thưởng không được tính là doanh thu', async () => {
     mockApi({ ...LOGGED_IN, 'GET /api/admin/overview': json(OVERVIEW) });
     renderAdmin('/');
     const heading = await screen.findByRole('heading', { name: 'Tài chính' });
@@ -29,7 +30,7 @@ describe('Tổng quan', () => {
       expect(within(section).getByText(label).parentElement).toHaveTextContent(`${label}Chưa có nguồn dữ liệu`);
     }
     expect(section).not.toHaveTextContent('₫');
-    expect(screen.getByText('Không phải doanh thu hay chi phí')).toBeInTheDocument();
+    expect(section).toHaveTextContent('không được tính là doanh thu hay chi phí');
   });
 
   test('truy cập chưa có nguồn: nêu rõ, không suy ra từ check-in; ô chưa có dữ liệu là "—", ô bằng 0 vẫn là 0', async () => {
@@ -112,7 +113,7 @@ describe('Tổng quan', () => {
   test('đổi bộ lọc gọi lại API với đúng tham số; gộp theo tháng', async () => {
     const api = mockApi({ ...LOGGED_IN, 'GET /api/admin/overview': json(OVERVIEW) });
     renderAdmin('/');
-    await screen.findByText('450.000 ₫');
+    await screen.findByText('300.000 ₫');
     await userEvent.selectOptions(screen.getByLabelText('Gộp theo'), 'month');
     await waitFor(() => expect(api.callsTo('GET', '/api/admin/overview').at(-1).path).toContain('granularity=month'));
     await userEvent.click(screen.getByRole('button', { name: '7 ngày' }));
@@ -138,9 +139,9 @@ describe('Tổng quan', () => {
       },
     });
     renderAdmin('/');
-    await screen.findByText('450.000 ₫');
+    await screen.findByText('300.000 ₫');
     await userEvent.click(screen.getByRole('button', { name: 'Tải lại số liệu' }));
-    expect(screen.getByText('450.000 ₫')).toBeInTheDocument();
+    expect(screen.getByText('300.000 ₫')).toBeInTheDocument();
     second.resolve(json(OVERVIEW));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Tải lại số liệu' })).toBeEnabled());
   });
@@ -148,7 +149,7 @@ describe('Tổng quan', () => {
   test('biểu đồ dùng được bằng bàn phím: mũi tên đọc từng kỳ, Home/End nhảy về hai đầu', async () => {
     mockApi({ ...LOGGED_IN, 'GET /api/admin/overview': json(OVERVIEW) });
     renderAdmin('/');
-    await screen.findByText('450.000 ₫');
+    await screen.findByText('300.000 ₫');
     const chart = screen.getByRole('img', { name: /Check-in/ });
     const status = chart.closest('figure').querySelector('[role="status"]');
     expect(status).toHaveTextContent('Cao nhất 27 lượt vào 02/10.');
@@ -169,7 +170,7 @@ describe('Tổng quan', () => {
     const series = OVERVIEW.series.map((row) => ({ ...row, checkInsValid: 0, checkInsInvalid: 0 }));
     mockApi({ ...LOGGED_IN, 'GET /api/admin/overview': json({ ...OVERVIEW, series }) });
     renderAdmin('/');
-    await screen.findByText('450.000 ₫');
+    await screen.findByText('300.000 ₫');
     const figure = screen.getByRole('img', { name: /Check-in/ }).closest('figure');
     expect(figure).toHaveTextContent('Không có dữ liệu trong kỳ này.');
     expect(figure).not.toHaveTextContent('0.5');
@@ -179,7 +180,7 @@ describe('Tổng quan', () => {
     const series = Array.from({ length: 366 }, (_, day) => ({ ...OVERVIEW.series[2], period: `2026-${String(day).padStart(5, '0')}` }));
     mockApi({ ...LOGGED_IN, 'GET /api/admin/overview': json({ ...OVERVIEW, series }) });
     renderAdmin('/');
-    await screen.findByText('450.000 ₫');
+    await screen.findByText('300.000 ₫');
     const plot = screen.getByRole('img', { name: /Tài khoản mới/ });
     expect(plot.children).toHaveLength(366);
     expect(plot.querySelector('.px-px')).toBeNull();
@@ -520,6 +521,19 @@ describe('Câu chuyện', () => {
     expect(within(preview).getByRole('link')).toHaveAttribute('rel', 'noopener noreferrer');
   });
 
+  // SEC-04: khu quản trị không tải tài nguyên bên thứ ba (CSP img-src chỉ còn cùng nguồn, API và data:); ảnh ngoài chỉ hiện dạng liên kết để mở tab mới
+  test('SEC-04: xem trước không tải ảnh từ máy khác, chỉ hiện tên máy và liên kết mở ảnh', async () => {
+    mockApi(LOGGED_IN);
+    renderAdmin('/stories/new');
+    const preview = await screen.findByRole('complementary', { name: 'Xem trước' });
+    fireEvent.change(screen.getByLabelText('URL ảnh (HTTPS, tùy chọn)'), { target: { value: 'https://cdn.example/rua.jpg' } });
+    await waitFor(() => expect(within(preview).getByText(/cdn\.example/)).toBeInTheDocument());
+    expect(preview.querySelector('img')).toBeNull();
+    const open = within(preview).getByRole('link', { name: /Mở ảnh/ });
+    expect(open).toHaveAttribute('href', 'https://cdn.example/rua.jpg');
+    expect(open).toHaveAttribute('rel', 'noopener noreferrer');
+  });
+
   test('sửa: gửi kèm revision, slug bị khóa; xung đột phiên bản hiện thông báo tải lại', async () => {
     const api = mockApi({
       ...LOGGED_IN,
@@ -566,8 +580,10 @@ describe('Câu chuyện', () => {
   });
 });
 
-describe('Gacha', () => {
+describe('Quay thưởng tri ân', () => {
   const route = `GET /api/admin/gacha/configs/${GACHA_DRAFT.id}`;
+  const SECOND = { ...MEDIA, id: 'b'.repeat(24), name: 'Lá vàng', url: `/api/gacha/media/${'b'.repeat(24)}` };
+  const LIBRARY = { 'GET /api/admin/gacha/media': json({ items: [MEDIA, SECOND] }) };
   const open = () => renderAdmin(`/gacha/${GACHA_DRAFT.id}`);
   const PUBLISHED = {
     ...GACHA_DRAFT,
@@ -577,74 +593,106 @@ describe('Gacha', () => {
     effectiveFrom: '2026-10-01T00:00:00.000Z',
     publishedByLabel: 'ad***@example.edu.vn',
     publishedAt: '2026-10-01T00:00:00.000Z',
+    issued: [{ prizeId: 'la-xanh', count: 3, faceValueVnd: 0 }],
+    spins: { total: 120, wins: 3, losses: 117 },
+    usage: [{ prizeId: 'la-xanh', used: 7 }],
+  };
+  const LEGACY = {
+    ...PUBLISHED,
+    legacy: true,
+    prizes: [{ prizeId: 'topup-10k', label: 'Mã nạp điện thoại', prizeType: 'phone_topup', legacy: true, carrier: 'Viettel', amountVnd: 10_000, probabilityPpm: 1_000_000, enabled: true, maxQuantity: null }],
     budgetVnd: 500_000,
     budgetUsedVnd: 30_000,
     issued: [{ prizeId: 'topup-10k', count: 3, faceValueVnd: 30_000 }],
   };
 
-  test('danh sách phân biệt đang hiệu lực, nháp, hẹn giờ, đã kết thúc; nêu rõ mã là mã demo', async () => {
+  test('danh sách phân biệt đang hiệu lực, nháp, hẹn giờ, đã kết thúc; có tổng xác suất trúng và lời nhắc quà thật', async () => {
     const items = [
       GACHA_DRAFT,
       { ...PUBLISHED, version: 2, id: '2'.repeat(24) },
       { ...PUBLISHED, version: 4, id: '4'.repeat(24), isCurrent: false, effectiveFrom: '2099-01-01T00:00:00.000Z' },
-      { ...PUBLISHED, version: 1, id: '1'.repeat(24), isCurrent: false, effectiveTo: '2026-10-02T00:00:00.000Z' },
+      { ...LEGACY, version: 1, id: '1'.repeat(24), isCurrent: false, effectiveTo: '2026-10-02T00:00:00.000Z' },
     ];
     mockApi({ ...LOGGED_IN, 'GET /api/admin/gacha/configs': json({ items, page: 1, pageSize: 20, total: 4, currentId: '2'.repeat(24) }) });
     renderAdmin('/gacha');
     expect(await screen.findByText('Đang hiệu lực')).toBeInTheDocument();
     expect(screen.getByText('Đã hẹn giờ')).toBeInTheDocument();
     expect(screen.getByText('Đã kết thúc')).toBeInTheDocument();
-    expect(screen.getByText(/chưa được xác minh đổi được/)).toBeInTheDocument();
+    expect(screen.getByText('(mã nạp demo, đã ngừng)')).toBeInTheDocument();
+    expect(screen.getAllByText('0.1% (≈ 1 trên 1.000 lượt)').length).toBeGreaterThan(0);
+    expect(screen.getByText(/Móc khóa là quà thật/)).toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: 'Mục quay thưởng tri ân' })).toBeInTheDocument();
   });
 
-  test('tổng xác suất cập nhật khi gõ; phép tính không dính sai số số thực', async () => {
-    mockApi({ ...LOGGED_IN, [route]: json({ ...GACHA_DRAFT, prizes: [{ ...PRIZE, probabilityPpm: 100_000 }, { ...PRIZE, prizeId: 'b', probabilityPpm: 200_000 }] }) });
+  test('tổng xác suất trúng và phần không trúng cập nhật khi gõ; "1 trên N" theo từng mẫu; không dính sai số số thực', async () => {
+    mockApi({ ...LOGGED_IN, ...LIBRARY, [route]: json({ ...GACHA_DRAFT, prizes: [{ ...PRIZE, probabilityPpm: 100_000 }, { ...PRIZE, prizeId: 'b', probabilityPpm: 200_000 }] }) });
     open();
-    expect(await screen.findByText(/Tổng xác suất các giải đang bật: 30%/)).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('Xác suất giải 1'), { target: { value: '33.3333' } });
-    fireEvent.change(screen.getByLabelText('Xác suất giải 2'), { target: { value: '66.6667' } });
-    expect(screen.getByText(/Tổng xác suất các giải đang bật: 100% — hợp lệ/)).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('checkbox', { name: 'Bật giải 2' }));
-    expect(screen.getByText(/33\.3333% — phải bằng đúng 100%/)).toBeInTheDocument();
+    expect(await screen.findByText(/Tổng xác suất trúng của các mẫu đang bật: 30% \(≈ 1 trên 3 lượt\)\. Không trúng: 70%/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Xác suất trúng mẫu 1'), { target: { value: '33.3333' } });
+    fireEvent.change(screen.getByLabelText('Xác suất trúng mẫu 2'), { target: { value: '0.0001' } });
+    expect(screen.getByText('≈ 1 trên 1.000.000 lượt')).toBeInTheDocument();
+    expect(screen.getByText(/Tổng xác suất trúng của các mẫu đang bật: 33.3334%/)).toBeInTheDocument();
+    expect(screen.getByText(/Không trúng: 66.6666%/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Xác suất trúng mẫu 2'), { target: { value: '70' } });
+    expect(screen.getByText(/Vượt 100% nên chưa xuất bản được/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Bật mẫu 2' }));
+    expect(screen.getByText(/các mẫu đang bật: 33.3333%/)).toBeInTheDocument();
   });
 
-  test('lưu nháp gửi số nguyên phần triệu và số nguyên VND; lỗi từng ô hiện đúng chỗ', async () => {
+  test('chọn ảnh từ thư viện; lưu nháp gửi số nguyên phần triệu, số lượng, ảnh, hướng dẫn nhận quà; lỗi từng ô hiện đúng chỗ', async () => {
     const api = mockApi({
       ...LOGGED_IN,
+      ...LIBRARY,
       [route]: json(GACHA_DRAFT),
-      [`PUT /api/admin/gacha/configs/${GACHA_DRAFT.id}`]: json({ error: 'Dữ liệu chưa hợp lệ.', code: 'invalid_input', fields: { 'prizes.0.amountVnd': 'Mệnh giá là số nguyên VND.' } }, 400),
+      [`PUT /api/admin/gacha/configs/${GACHA_DRAFT.id}`]: json({ error: 'Dữ liệu chưa hợp lệ.', code: 'invalid_input', fields: { 'prizes.0.maxQuantity': 'Nhập tổng số móc khóa của mẫu này (số nguyên dương).' } }, 400),
     });
     open();
-    fireEvent.change(await screen.findByLabelText('Mệnh giá giải 1'), { target: { value: '20000' } });
-    fireEvent.change(screen.getByLabelText('Xác suất giải 1'), { target: { value: '8.3334' } });
-    fireEvent.change(screen.getByLabelText('Giới hạn kho giải 1'), { target: { value: '50' } });
-    fireEvent.change(screen.getByLabelText('Ngân sách tối đa (VND)'), { target: { value: '1000000' } });
+    expect(await screen.findByText('Đã trúng: 4')).toBeInTheDocument();
+    expect(await screen.findByRole('img', { name: 'Ảnh Lá xanh' })).toHaveAttribute('src', MEDIA.url);
+    await userEvent.selectOptions(screen.getByLabelText('Ảnh móc khóa mẫu 1'), 'Lá vàng');
+    expect(screen.getByRole('img', { name: 'Ảnh Lá vàng' })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Tên móc khóa mẫu 1'), { target: { value: 'Lá vàng' } });
+    fireEvent.change(screen.getByLabelText('Xác suất trúng mẫu 1'), { target: { value: '8.3334' } });
+    fireEvent.change(screen.getByLabelText('Tổng số lượng mẫu 1'), { target: { value: '50' } });
+    fireEvent.change(screen.getByLabelText('Hướng dẫn nhận quà'), { target: { value: 'Quầy 2, thứ 2-6' } });
     await userEvent.click(screen.getByRole('button', { name: 'Lưu nháp' }));
-    expect(await screen.findByText('Mệnh giá là số nguyên VND.')).toBeInTheDocument();
+    expect(await screen.findByText('Nhập tổng số móc khóa của mẫu này (số nguyên dương).')).toBeInTheDocument();
     const body = JSON.parse(api.callsTo('PUT', `/api/admin/gacha/configs/${GACHA_DRAFT.id}`)[0].init.body);
-    expect(body.prizes[0]).toMatchObject({ amountVnd: 20_000, probabilityPpm: 83_334, maxQuantity: 50 });
-    expect(body.budgetVnd).toBe(1_000_000);
+    expect(body.prizes[0]).toEqual({ prizeId: 'la-xanh', label: 'Lá vàng', description: 'Móc khóa hình lá', imageId: SECOND.id, enabled: true, probabilityPpm: 83_334, maxQuantity: 50 });
+    expect(body.claimInstructions).toBe('Quầy 2, thứ 2-6');
+    expect(body).not.toHaveProperty('budgetVnd');
     expect(body.revision).toBe(0);
   });
 
   test('giá trị sai định dạng được gửi nguyên để server từ chối, không tự làm tròn', async () => {
     const api = mockApi({
       ...LOGGED_IN,
+      ...LIBRARY,
       [route]: json(GACHA_DRAFT),
       [`PUT /api/admin/gacha/configs/${GACHA_DRAFT.id}`]: json({ error: 'Dữ liệu chưa hợp lệ.', code: 'invalid_input', fields: {} }, 400),
     });
     open();
-    fireEvent.change(await screen.findByLabelText('Mệnh giá giải 1'), { target: { value: '10000.5' } });
-    fireEvent.change(screen.getByLabelText('Xác suất giải 1'), { target: { value: '1.23456' } });
+    fireEvent.change(await screen.findByLabelText('Tổng số lượng mẫu 1'), { target: { value: '10.5' } });
+    fireEvent.change(screen.getByLabelText('Xác suất trúng mẫu 1'), { target: { value: '1.23456' } });
+    expect(screen.getByText('Sai định dạng')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Lưu nháp' }));
     await screen.findByRole('alert');
     const body = JSON.parse(api.callsTo('PUT', `/api/admin/gacha/configs/${GACHA_DRAFT.id}`)[0].init.body);
-    expect(body.prizes[0].amountVnd).toBe('10000.5');
+    expect(body.prizes[0].maxQuantity).toBe('10.5');
     expect(body.prizes[0].probabilityPpm).toBe('1.23456');
   });
 
+  test('bản nháp cũ còn giải mã nạp: báo trước, các dòng đó không được gửi khi lưu', async () => {
+    const api = mockApi({ ...LOGGED_IN, ...LIBRARY, [route]: json({ ...GACHA_DRAFT, prizes: [...LEGACY.prizes, PRIZE] }), [`PUT /api/admin/gacha/configs/${GACHA_DRAFT.id}`]: json({ ...GACHA_DRAFT, revision: 1 }) });
+    open();
+    expect(await screen.findByText(/có 1 giải mã nạp điện thoại cũ/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Lưu nháp' }));
+    await screen.findByText('Đã lưu bản nháp.');
+    expect(JSON.parse(api.callsTo('PUT', `/api/admin/gacha/configs/${GACHA_DRAFT.id}`)[0].init.body).prizes.map((p) => p.prizeId)).toEqual(['la-xanh']);
+  });
+
   test('thời điểm hiệu lực nhập theo giờ Việt Nam, gửi đúng mốc UTC', async () => {
-    const api = mockApi({ ...LOGGED_IN, [route]: json(GACHA_DRAFT), [`PUT /api/admin/gacha/configs/${GACHA_DRAFT.id}`]: json({ ...GACHA_DRAFT, revision: 1 }) });
+    const api = mockApi({ ...LOGGED_IN, ...LIBRARY, [route]: json(GACHA_DRAFT), [`PUT /api/admin/gacha/configs/${GACHA_DRAFT.id}`]: json({ ...GACHA_DRAFT, revision: 1 }) });
     open();
     fireEvent.change(await screen.findByLabelText('Hiệu lực từ (giờ Việt Nam)'), { target: { value: '2026-11-01T08:30' } });
     await userEvent.click(screen.getByRole('button', { name: 'Lưu nháp' }));
@@ -656,6 +704,7 @@ describe('Gacha', () => {
     let publishCalls = 0;
     const api = mockApi({
       ...LOGGED_IN,
+      ...LIBRARY,
       [route]: (() => {
         let reads = 0;
         return () => {
@@ -681,13 +730,13 @@ describe('Gacha', () => {
     await userEvent.click(within(reauth).getByRole('button', { name: 'Xác nhận' }));
     expect(await screen.findByText('Đã xuất bản phiên bản 3.')).toBeInTheDocument();
     expect(await screen.findByRole('button', { name: 'Ngừng hiệu lực' })).toBeInTheDocument();
-    expect(screen.queryByLabelText('Mệnh giá giải 1')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Xác suất trúng mẫu 1')).not.toBeInTheDocument();
     expect(JSON.parse(api.callsTo('POST', `/api/admin/gacha/configs/${GACHA_DRAFT.id}/publish`)[0].init.body)).toEqual({ revision: 1 });
   });
 
   test('hộp thoại xác nhận không nằm trong <form>: form lồng nhau làm trình duyệt tự gửi và tải lại trang', async () => {
     const errors = vi.spyOn(console, 'error');
-    mockApi({ ...LOGGED_IN, [route]: json(GACHA_DRAFT) });
+    mockApi({ ...LOGGED_IN, ...LIBRARY, [route]: json(GACHA_DRAFT) });
     open();
     await userEvent.click(await screen.findByRole('button', { name: 'Xuất bản' }));
     const publish = await screen.findByRole('dialog', { name: 'Xuất bản phiên bản 3' });
@@ -699,13 +748,18 @@ describe('Gacha', () => {
     expect(errors.mock.calls.flat().join(' ')).not.toContain('validateDOMNesting');
   });
 
-  test('xuất bản bị từ chối vì tổng xác suất: lỗi hiện trên biểu mẫu, bản nháp giữ nguyên', async () => {
+  test('xuất bản bị từ chối: lỗi hiện trên biểu mẫu (tổng xác suất, hướng dẫn nhận quà), bản nháp giữ nguyên', async () => {
     mockApi({
       ...LOGGED_IN,
+      ...LIBRARY,
       [route]: json(GACHA_DRAFT),
       [`PUT /api/admin/gacha/configs/${GACHA_DRAFT.id}`]: json({ ...GACHA_DRAFT, revision: 1 }),
       [`POST /api/admin/gacha/configs/${GACHA_DRAFT.id}/publish`]: json(
-        { error: 'Cấu hình chưa đủ điều kiện xuất bản.', code: 'invalid_input', fields: { probabilityTotal: 'Tổng xác suất các giải đang bật phải bằng 100% (hiện tại 90%).' } },
+        {
+          error: 'Cấu hình chưa đủ điều kiện xuất bản.',
+          code: 'invalid_input',
+          fields: { probabilityTotal: 'Tổng xác suất trúng của các mẫu đang bật tối đa 100% (hiện tại 120%).', claimInstructions: 'Nhập hướng dẫn nhận quà: nơi nhận, thời gian, cần mang gì, hạn nhận.' },
+        },
         400
       ),
     });
@@ -713,19 +767,34 @@ describe('Gacha', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Xuất bản' }));
     const dialog = await screen.findByRole('dialog', { name: 'Xuất bản phiên bản 3' });
     await userEvent.click(within(dialog).getByRole('button', { name: 'Xuất bản' }));
-    expect(await screen.findByText(/hiện tại 90%/)).toBeInTheDocument();
+    expect(await screen.findByText(/hiện tại 120%/)).toBeInTheDocument();
+    expect(screen.getByText(/Nhập hướng dẫn nhận quà: nơi nhận/)).toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent('chưa đủ điều kiện');
-    expect(screen.getByLabelText('Mệnh giá giải 1')).toBeInTheDocument();
+    expect(screen.getByLabelText('Xác suất trúng mẫu 1')).toBeInTheDocument();
   });
 
-  test('bản đã xuất bản chỉ đọc: có số đã phát, ngân sách đã dùng, người xuất bản; không có ô sửa', async () => {
+  test('bản đã xuất bản chỉ đọc: ảnh, xác suất kèm "1 trên N", trúng ở phiên bản này, đã trúng / tổng, lượt quay, hướng dẫn nhận quà', async () => {
     mockApi({ ...LOGGED_IN, [route]: json(PUBLISHED) });
     open();
-    expect(await screen.findByText('30.000 ₫ / 500.000 ₫ đã dùng')).toBeInTheDocument();
-    expect(screen.getByText('Người sửa cuối').parentElement).toHaveTextContent('ad***@example.edu.vn');
+    const table = await screen.findByRole('region', { name: 'Mẫu móc khóa của phiên bản đã xuất bản' });
+    const row = within(table).getAllByRole('row')[1];
+    expect(within(row).getByRole('img', { name: 'Ảnh Lá xanh' })).toHaveAttribute('src', MEDIA.url);
+    expect(row).toHaveTextContent('0.1%');
+    expect(row).toHaveTextContent('≈ 1 trên 1.000 lượt');
+    expect(row).toHaveTextContent('7 / 100');
+    expect(screen.getByText('Lượt quay ở phiên bản này').parentElement).toHaveTextContent('120 lượt: 3 trúng, 117 không trúng');
+    expect(screen.getByText('Hướng dẫn nhận quà').parentElement).toHaveTextContent('Nhận tại quầy căn tin tầng 1.');
     expect(screen.getByText('Người xuất bản').parentElement).toHaveTextContent('ad***@example.edu.vn');
     expect(screen.queryByRole('button', { name: 'Lưu nháp' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Tạo bản nháp từ phiên bản này' })).toBeInTheDocument();
+  });
+
+  test('phiên bản mã nạp cũ vẫn xem được: nhà mạng, mệnh giá, ngân sách đã dùng', async () => {
+    mockApi({ ...LOGGED_IN, [route]: json(LEGACY) });
+    open();
+    expect(await screen.findByText(/Phiên bản mã nạp điện thoại demo trước khi đổi sang móc khóa/)).toBeInTheDocument();
+    expect(screen.getByText('30.000 ₫ / 500.000 ₫ đã dùng')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Danh mục giải mã nạp cũ' })).toHaveTextContent('Viettel');
   });
 
   test('tạo bản nháp từ phiên bản đã xuất bản: gửi đúng phiên bản gốc; lỗi từ server hiện thông báo', async () => {
@@ -733,6 +802,7 @@ describe('Gacha', () => {
     let attempts = 0;
     const api = mockApi({
       ...LOGGED_IN,
+      ...LIBRARY,
       [route]: json(PUBLISHED),
       'POST /api/admin/gacha/configs': () => {
         attempts += 1;
@@ -749,22 +819,24 @@ describe('Gacha', () => {
     expect(JSON.parse(api.callsTo('POST', '/api/admin/gacha/configs')[1].init.body)).toEqual({ basedOnId: PUBLISHED.id });
   });
 
-  test('thêm và xóa dòng giải; hủy bản nháp có xác nhận', async () => {
+  test('thêm và xóa mẫu; hủy bản nháp có xác nhận', async () => {
     const api = mockApi({
       ...LOGGED_IN,
+      ...LIBRARY,
       [route]: json(GACHA_DRAFT),
       'GET /api/admin/gacha/configs': json({ items: [], page: 1, pageSize: 20, total: 0, currentId: null }),
       [`POST /api/admin/gacha/configs/${GACHA_DRAFT.id}/discard`]: json({ ok: true }),
     });
     open();
-    await userEvent.click(await screen.findByRole('button', { name: 'Thêm giải' }));
-    expect(screen.getByLabelText('Tên giải 2')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Xóa giải 2' }));
-    expect(screen.queryByLabelText('Tên giải 2')).not.toBeInTheDocument();
+    await userEvent.click(await screen.findByRole('button', { name: 'Thêm mẫu móc khóa' }));
+    expect(screen.getByLabelText('Tên móc khóa mẫu 2')).toHaveValue('');
+    expect(screen.getByLabelText('Ảnh móc khóa mẫu 2')).toHaveValue('');
+    await userEvent.click(screen.getByRole('button', { name: 'Xóa mẫu 2' }));
+    expect(screen.queryByLabelText('Tên móc khóa mẫu 2')).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Hủy bản nháp' }));
     const dialog = await screen.findByRole('dialog', { name: 'Hủy bản nháp' });
     await userEvent.click(within(dialog).getByRole('button', { name: 'Hủy bản nháp' }));
-    expect(await screen.findByText('Chưa có phiên bản nào.')).toBeInTheDocument();
+    expect(await screen.findByText(/Chưa có phiên bản nào/)).toBeInTheDocument();
     expect(api.callsTo('POST', `/api/admin/gacha/configs/${GACHA_DRAFT.id}/discard`)).toHaveLength(1);
   });
 
@@ -774,9 +846,149 @@ describe('Gacha', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Ngừng hiệu lực' }));
     const dialog = await screen.findByRole('dialog', { name: 'Ngừng phiên bản 3' });
     expect(dialog).toHaveTextContent('giữ nguyên lượt quay');
+    expect(dialog).toHaveTextContent('Móc khóa đã trúng vẫn được trao');
     await userEvent.click(within(dialog).getByRole('button', { name: 'Ngừng hiệu lực' }));
     expect(await screen.findByText('Đã ngừng hiệu lực.')).toBeInTheDocument();
     expect(api.callsTo('POST', `/api/admin/gacha/configs/${GACHA_DRAFT.id}/end`)).toHaveLength(1);
+  });
+});
+
+describe('Ảnh & sticker', () => {
+  const STICKER = { ...MEDIA, id: 'c'.repeat(24), kind: 'win', name: 'Pháo hoa', animated: true, url: `/api/gacha/media/${'c'.repeat(24)}` };
+
+  test('tải ảnh: gửi loại, tên, tệp; ảnh mới hiện đầu danh sách; lỗi từ server hiện đúng ô', async () => {
+    let uploads = 0;
+    const api = mockApi({
+      ...LOGGED_IN,
+      'GET /api/admin/gacha/media': json({ items: [MEDIA] }),
+      'POST /api/admin/gacha/media': () => {
+        uploads += 1;
+        return uploads === 1 ? json({ error: 'Dữ liệu chưa hợp lệ.', code: 'invalid_input', fields: { name: 'Tên ảnh cần từ 1 đến 80 ký tự.' } }, 400) : json(STICKER, 201);
+      },
+    });
+    renderAdmin('/gacha/media');
+    expect(await screen.findByRole('img', { name: 'Lá xanh' })).toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText('Loại ảnh'), 'win');
+    await userEvent.type(screen.getByLabelText('Tên sticker'), 'Pháo hoa');
+    const file = new File([new Uint8Array([71, 73, 70, 56, 57, 97])], 'phao-hoa.gif', { type: 'image/gif' });
+    await userEvent.upload(screen.getByLabelText('Tệp ảnh'), file);
+    await userEvent.click(screen.getByRole('button', { name: 'Tải lên' }));
+    expect(await screen.findByText('Tên ảnh cần từ 1 đến 80 ký tự.')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Tải lên' }));
+    expect(await screen.findByText('Đã tải lên «Pháo hoa».')).toBeInTheDocument();
+    const list = screen.getByRole('list', { name: 'Thư viện ảnh quay thưởng' });
+    expect(within(list).getAllByRole('listitem')[0]).toHaveTextContent('Pháo hoa');
+    expect(within(list).getAllByRole('listitem')[0]).toHaveTextContent('Ảnh động');
+    const form = api.callsTo('POST', '/api/admin/gacha/media')[1].init.body;
+    expect([form.get('kind'), form.get('name'), form.get('image').name]).toEqual(['win', 'Pháo hoa', 'phao-hoa.gif']);
+  });
+
+  test('chưa chọn tệp hoặc tệp quá 8 MB: báo ngay, không gửi', async () => {
+    const api = mockApi({ ...LOGGED_IN, 'GET /api/admin/gacha/media': json({ items: [] }) });
+    renderAdmin('/gacha/media');
+    await userEvent.type(await screen.findByLabelText(/Tên móc khóa/), 'Lá xanh');
+    await userEvent.click(screen.getByRole('button', { name: 'Tải lên' }));
+    expect(await screen.findByText('Chọn tệp ảnh.')).toBeInTheDocument();
+    const big = new File([new Uint8Array(8 * 1024 * 1024 + 1)], 'to.png', { type: 'image/png' });
+    await userEvent.upload(screen.getByLabelText('Tệp ảnh'), big);
+    await userEvent.click(screen.getByRole('button', { name: 'Tải lên' }));
+    expect(await screen.findByText('Ảnh quá lớn (tối đa 8 MB).')).toBeInTheDocument();
+    expect(api.callsTo('POST', '/api/admin/gacha/media')).toHaveLength(0);
+  });
+
+  test('đổi tên, tắt sticker; xóa có xác nhận và báo lỗi khi ảnh đang được dùng', async () => {
+    let deletes = 0;
+    const api = mockApi({
+      ...LOGGED_IN,
+      'GET /api/admin/gacha/media': json({ items: [MEDIA, STICKER] }),
+      [`PATCH /api/admin/gacha/media/${STICKER.id}`]: ({ init }) => json({ ...STICKER, ...JSON.parse(init.body) }),
+      [`DELETE /api/admin/gacha/media/${MEDIA.id}`]: () => {
+        deletes += 1;
+        return deletes === 1 ? json({ error: 'Ảnh đang được dùng ở phiên bản 3 đang hoặc sắp hiệu lực.', code: 'media_in_use' }, 409) : json({ ok: true });
+      },
+    });
+    renderAdmin('/gacha/media');
+    await userEvent.click(await screen.findByRole('button', { name: 'Tắt Pháo hoa' }));
+    expect(await screen.findByText('Đã tắt sticker.')).toBeInTheDocument();
+    expect(screen.getByText('Đang tắt')).toBeInTheDocument();
+    expect(JSON.parse(api.callsTo('PATCH', `/api/admin/gacha/media/${STICKER.id}`)[0].init.body)).toEqual({ active: false });
+    expect(screen.queryByRole('button', { name: 'Tắt Lá xanh' })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Đổi tên Pháo hoa' }));
+    const input = screen.getByLabelText('Tên mới cho Pháo hoa');
+    await userEvent.clear(input);
+    await userEvent.type(input, 'Pháo hoa vàng');
+    await userEvent.click(screen.getByRole('button', { name: 'Lưu' }));
+    expect(await screen.findByText('Pháo hoa vàng')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Xóa Lá xanh' }));
+    let dialog = await screen.findByRole('dialog', { name: 'Xóa «Lá xanh»' });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Xóa ảnh' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('đang được dùng');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Xóa ảnh' }));
+    expect(await screen.findByText('Đã xóa ảnh.')).toBeInTheDocument();
+    expect(screen.queryByRole('img', { name: 'Lá xanh' })).not.toBeInTheDocument();
+  });
+});
+
+describe('Trao quà', () => {
+  const ROW = {
+    id: 'd'.repeat(24),
+    claimCode: 'TA-23456-789AB',
+    prizeLabel: 'Lá xanh',
+    imageUrl: MEDIA.url,
+    configVersion: 3,
+    deliveryStatus: 'pending',
+    deliveredAt: null,
+    deliveredByLabel: '',
+    deliveryNote: '',
+    createdAt: '2026-11-01T03:00:00.000Z',
+    winner: { id: USER_ROW.id, name: 'Nguyễn An', studentId: 'SV***01' },
+  };
+
+  test('mặc định lọc chờ trao; tìm theo mã gửi đúng nguyên mã; người trúng đã che, liên kết tới tài khoản', async () => {
+    const api = mockApi({ ...LOGGED_IN, 'GET /api/admin/gacha/rewards': json({ items: [ROW], page: 1, pageSize: 20, total: 1, pending: 1 }) });
+    renderAdmin('/gacha/rewards');
+    const table = await screen.findByRole('region', { name: 'Lượt trúng móc khóa' });
+    expect(table).toHaveTextContent('TA-23456-789AB');
+    expect(within(table).getByRole('link', { name: 'Nguyễn An · SV***01' })).toHaveAttribute('href', `/users/${USER_ROW.id}`);
+    expect(screen.getByText('Đang chờ trao: 1 móc khóa.')).toBeInTheDocument();
+    expect(api.callsTo('GET', '/api/admin/gacha/rewards')[0].path).toContain('status=pending');
+    await userEvent.type(screen.getByLabelText('Mã nhận quà (đúng nguyên mã)'), ' ta-23456-789ab ');
+    await userEvent.click(screen.getByRole('button', { name: 'Tìm' }));
+    await waitFor(() => expect(api.callsTo('GET', '/api/admin/gacha/rewards').at(-1).path).toContain('q=ta-23456-789ab'));
+  });
+
+  test('xác nhận đã trao kèm ghi chú; hoàn tác cần lý do', async () => {
+    let state = ROW;
+    const api = mockApi({
+      ...LOGGED_IN,
+      'GET /api/admin/gacha/rewards': () => json({ items: [state], page: 1, pageSize: 20, total: 1, pending: state.deliveryStatus === 'pending' ? 1 : 0 }),
+      [`POST /api/admin/gacha/rewards/${ROW.id}/deliver`]: () => {
+        state = { ...ROW, deliveryStatus: 'delivered', deliveredAt: '2026-11-02T03:00:00.000Z', deliveredByLabel: 'ad***@example.edu.vn', deliveryNote: 'Đã xem thẻ SV' };
+        return json(state);
+      },
+      [`POST /api/admin/gacha/rewards/${ROW.id}/undeliver`]: () => {
+        state = ROW;
+        return json(state);
+      },
+    });
+    renderAdmin('/gacha/rewards');
+    await userEvent.click(await screen.findByRole('button', { name: 'Xác nhận đã trao TA-23456-789AB' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Xác nhận đã trao TA-23456-789AB' });
+    expect(dialog).toHaveTextContent('Nguyễn An');
+    await userEvent.type(within(dialog).getByLabelText('Ghi chú (không bắt buộc)'), 'Đã xem thẻ SV');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Xác nhận đã trao' }));
+    expect(await screen.findByText('Đã xác nhận trao quà.')).toBeInTheDocument();
+    expect(JSON.parse(api.callsTo('POST', `/api/admin/gacha/rewards/${ROW.id}/deliver`)[0].init.body)).toEqual({ note: 'Đã xem thẻ SV' });
+
+    await userEvent.selectOptions(screen.getByLabelText('Trạng thái'), '');
+    await userEvent.click(await screen.findByRole('button', { name: 'Hoàn tác trao quà TA-23456-789AB' }));
+    const undo = await screen.findByRole('dialog', { name: 'Hoàn tác trao quà TA-23456-789AB' });
+    await userEvent.type(within(undo).getByLabelText('Lý do hoàn tác'), 'Bấm nhầm');
+    await userEvent.click(within(undo).getByRole('button', { name: 'Hoàn tác' }));
+    expect(await screen.findByText('Đã chuyển về chờ trao.')).toBeInTheDocument();
+    expect(JSON.parse(api.callsTo('POST', `/api/admin/gacha/rewards/${ROW.id}/undeliver`)[0].init.body)).toEqual({ reason: 'Bấm nhầm' });
   });
 });
 
@@ -877,7 +1089,7 @@ describe('khung quản trị', () => {
     mockApi({ ...LOGGED_IN, 'GET /api/admin/overview': json(OVERVIEW), 'GET /api/admin/users': json({ items: [], page: 1, pageSize: 20, total: 0 }) });
     renderAdmin('/');
     const nav = await screen.findByRole('navigation', { name: 'Khu quản trị' });
-    expect(within(nav).getAllByRole('link').map((link) => link.textContent)).toEqual(['Tổng quan', 'Tài khoản', 'Câu chuyện', 'Gacha', 'Thiết lập website', 'Nhật ký kiểm toán']);
+    expect(within(nav).getAllByRole('link').map((link) => link.textContent)).toEqual(['Tổng quan', 'Tài khoản', 'Câu chuyện', 'Quay thưởng tri ân', 'Thiết lập website', 'Nhật ký kiểm toán']);
     expect(screen.getByRole('link', { name: 'Bỏ qua điều hướng' })).toHaveAttribute('href', '#admin-main');
     await userEvent.click(within(nav).getByRole('link', { name: 'Tài khoản' }));
     await screen.findByRole('heading', { name: 'Tài khoản' });

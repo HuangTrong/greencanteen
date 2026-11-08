@@ -1,4 +1,4 @@
-// Quản lý tài khoản (thông tin, phương thức đăng nhập, mật khẩu, phiên), Gacha ở trang Cá nhân,
+// Quản lý tài khoản (thông tin, phương thức đăng nhập, mật khẩu, phiên), quay thưởng tri ân ở trang Cá nhân,
 // khung Modal dùng chung (bàn phím, bẫy focus, bộ gõ tiếng Việt), hộp xác nhận QR
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -211,8 +211,16 @@ describe('phiên đăng nhập', () => {
   });
 });
 
-describe('Gacha ở trang Cá nhân', () => {
+describe('quay thưởng tri ân ở trang Cá nhân', () => {
   beforeEach(() => vi.useFakeTimers({ shouldAdvanceTime: true }));
+
+  const KEYCHAIN = { id: 'r1', type: 'keychain', label: 'Lá xanh', imageUrl: '/api/gacha/media/abc', claimCode: 'TA-BEEF2-34567', deliveryStatus: 'pending', deliveredAt: null, claimInstructions: 'Nhận ở quầy căn tin, mang thẻ SV', createdAt: '2026-10-28T03:00:00.000Z' };
+  const WIN = {
+    outcome: 'win',
+    prize: { type: 'keychain', label: 'Lá xanh', description: 'Móc khóa hình lá', imageUrl: '/api/gacha/media/abc', claimCode: 'TA-BEEF2-34567' },
+    claimInstructions: 'Nhận ở quầy căn tin, mang thẻ SV',
+    sticker: { url: '/api/gacha/media/sticker', name: 'Pháo hoa' },
+  };
 
   async function renderGacha(routes, pendingSpins) {
     vi.resetModules();
@@ -236,45 +244,85 @@ describe('Gacha ở trang Cá nhân', () => {
   }
 
   test('0 lượt → nút khóa; số lượt đồng bộ theo server', async () => {
-    const { onSpinsChange } = await renderGacha({ 'GET /api/gacha/rewards': json({ pendingGachaSpins: 0, rewards: [] }) }, 2);
+    const { onSpinsChange } = await renderGacha({ 'GET /api/gacha/results': json({ pendingGachaSpins: 0, stats: { spins: 0, wins: 0 }, rewards: [] }) }, 2);
     await waitFor(() => expect(onSpinsChange).toHaveBeenCalledWith(0));
-    expect(screen.getByRole('button', { name: 'Quay Gacha' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Quay thưởng' })).toBeDisabled();
   });
 
-  test('quay thành công → hiện mã, giảm lượt, tải lại danh sách; lỗi → đồng bộ lại số lượt', async () => {
+  test('trúng → sticker, ảnh móc khóa, mã nhận quà, cách nhận; giảm lượt, tải lại danh sách', async () => {
     let list = [];
     let spins = 1;
     const { onSpinsChange } = await renderGacha(
       {
-        'GET /api/gacha/rewards': () => json({ pendingGachaSpins: spins, rewards: list }),
-        'POST /api/gacha/spin': () => {
-          if (spins < 1) return json({ error: 'Bạn chưa có lượt quay Gacha.', code: 'no_spins' }, 400);
+        'GET /api/gacha/results': () => json({ pendingGachaSpins: spins, stats: { spins: list.length, wins: list.length }, rewards: list }),
+        'POST /api/gacha/draw': () => {
+          if (spins < 1) return json({ error: 'Bạn chưa có lượt quay thưởng tri ân.', code: 'no_spins' }, 400);
           spins -= 1;
-          list = [{ _id: 'r1', carrier: 'Mobifone', amountVnd: 50000, topUpCode: 'GC-50K-BEEF0001', createdAt: '2026-10-28T03:00:00.000Z' }];
-          return json({ prize: { carrier: 'Mobifone', amountVnd: 50000, topUpCode: 'GC-50K-BEEF0001' }, pendingGachaSpins: spins });
+          list = [KEYCHAIN];
+          return json({ ...WIN, pendingGachaSpins: spins });
         },
       },
       1
     );
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-    await user.click(await screen.findByRole('button', { name: 'Quay Gacha' }));
+    await user.click(await screen.findByRole('button', { name: 'Quay thưởng' }));
     expect(screen.getByRole('button', { name: 'Đang quay...' })).toBeDisabled();
     await act(() => vi.advanceTimersByTimeAsync(1200));
-    expect(await screen.findAllByText('GC-50K-BEEF0001')).toHaveLength(2);
-    expect(screen.getAllByText('50.000đ').length).toBeGreaterThan(0);
+    expect(await screen.findByRole('heading', { name: 'Trúng thưởng!' })).toBeInTheDocument();
+    expect(await screen.findAllByText('TA-BEEF2-34567')).toHaveLength(2);
+    expect(screen.getAllByRole('img', { name: 'Móc khóa Lá xanh' }).length).toBe(2);
+    expect(document.querySelector('img[src="/api/gacha/media/sticker"]')).toHaveAttribute('alt', '');
+    expect(screen.getAllByText('Nhận ở quầy căn tin, mang thẻ SV').length).toBeGreaterThan(0);
+    expect(screen.getByText('Chờ nhận')).toBeInTheDocument();
     expect(onSpinsChange).toHaveBeenLastCalledWith(0);
-    expect(screen.getByRole('button', { name: 'Quay Gacha' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Quay thưởng' })).toBeDisabled();
   });
 
-  test('lỗi tải danh sách → "Thử lại"', async () => {
+  test('không trúng → lời động viên, không có mã; đếm lượt đã quay', async () => {
+    let spins = 1;
+    await renderGacha(
+      {
+        'GET /api/gacha/results': () => json({ pendingGachaSpins: spins, stats: { spins: 1 - spins, wins: 0 }, rewards: [] }),
+        'POST /api/gacha/draw': () => {
+          spins -= 1;
+          return json({ outcome: 'lose', prize: null, claimInstructions: '', sticker: null, pendingGachaSpins: spins });
+        },
+      },
+      1
+    );
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    await user.click(await screen.findByRole('button', { name: 'Quay thưởng' }));
+    await act(() => vi.advanceTimersByTimeAsync(1200));
+    expect(await screen.findByRole('heading', { name: 'Chưa trúng lần này' })).toBeInTheDocument();
+    expect(await screen.findByText('Đã quay 1 lượt · trúng 0 móc khóa')).toBeInTheDocument();
+    expect(screen.queryByText(/^TA-/)).not.toBeInTheDocument();
+  });
+
+  test('móc khóa đã trao hiện "Đã nhận", không còn nút sao chép; mã nạp demo cũ gom riêng', async () => {
+    const delivered = { ...KEYCHAIN, deliveryStatus: 'delivered', deliveredAt: '2026-10-29T03:00:00.000Z' };
+    const legacy = { id: 'r0', type: 'phone_topup', carrier: 'Viettel', amountVnd: 10000, topUpCode: 'GC-10K-CU', createdAt: '2026-10-01T03:00:00.000Z' };
+    await renderGacha({ 'GET /api/gacha/results': json({ pendingGachaSpins: 0, stats: { spins: 5, wins: 1 }, rewards: [delivered, legacy] }) }, 0);
+    expect(await screen.findByText(/^Đã nhận/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Sao chép mã' })).not.toBeInTheDocument();
+    expect(screen.getByText('Mã nạp demo cũ (1)')).toBeInTheDocument();
+  });
+
+  test('hết móc khóa (409) → báo lỗi, lượt đồng bộ lại; lỗi tải danh sách → "Thử lại"', async () => {
     let attempt = 0;
     await renderGacha(
-      { 'GET /api/gacha/rewards': () => ((attempt += 1) === 1 ? json({ error: 'Lỗi máy chủ.', code: 'server_error' }, 500) : json({ pendingGachaSpins: 0, rewards: [] })) },
-      0
+      {
+        'GET /api/gacha/results': () => ((attempt += 1) === 1 ? json({ error: 'Lỗi máy chủ.', code: 'server_error' }, 500) : json({ pendingGachaSpins: 1, stats: { spins: 0, wins: 0 }, rewards: [] })),
+        'POST /api/gacha/draw': json({ error: 'Móc khóa đợt này đã được trao hết. Lượt quay của bạn vẫn được giữ.', code: 'gacha_out_of_stock' }, 409),
+      },
+      1
     );
     const alert = await screen.findByRole('alert');
     await userEvent.click(within(alert).getByRole('button', { name: 'Thử lại' }));
-    expect(await screen.findByText('Chưa có mã nạp nào.')).toBeInTheDocument();
+    expect(await screen.findByText('Chưa trúng móc khóa nào.')).toBeInTheDocument();
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    await user.click(screen.getByRole('button', { name: 'Quay thưởng' }));
+    await act(() => vi.advanceTimersByTimeAsync(1200));
+    expect(await screen.findByText('Móc khóa đợt này đã được trao hết. Lượt quay của bạn vẫn được giữ.')).toBeInTheDocument();
   });
 });
 

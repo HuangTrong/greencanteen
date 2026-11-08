@@ -150,8 +150,8 @@ export default function OverviewPage() {
             <Tile label="Tổng tài khoản" value={formatNumber(data.totals.accountsTotal)} note={`${formatNumber(data.totals.accountsNew)} mới trong kỳ, ${formatNumber(data.totals.accountsLocked)} đang khóa`} />
             <Tile label="Check-in hợp lệ" value={formatNumber(data.totals.checkInsValid)} note={data.totals.checkInsSimulated > 0 ? `Gồm ${formatNumber(data.totals.checkInsSimulated)} lượt mô phỏng` : undefined} />
             <Tile label="Check-in không hợp lệ" value={formatNumber(data.totals.checkInsInvalid)} />
-            <Tile label="Lượt Gacha" value={formatNumber(data.totals.gachaSpins)} note="Mỗi lượt tạo một phần thưởng" />
-            <Tile label="Tổng mệnh giá phần thưởng" value={formatVnd(data.totals.rewardFaceValueVnd)} note="Không phải doanh thu hay chi phí" />
+            <Tile label="Lượt quay thưởng tri ân" value={formatNumber(data.totals.gachaSpins)} note="Gồm cả lượt không trúng" />
+            <Tile label="Lượt trúng móc khóa" value={formatNumber(data.totals.gachaWins)} />
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
@@ -165,8 +165,8 @@ export default function OverviewPage() {
               ]}
             />
             <BarChart title="Tài khoản mới" unit="tài khoản" rows={data.series} series={[{ key: 'accountsNew', label: 'tài khoản mới', color: SERIES_COLORS.single }]} />
-            <BarChart title="Lượt Gacha" unit="lượt" rows={data.series} series={[{ key: 'gachaSpins', label: 'lượt', color: SERIES_COLORS.single }]} />
-            <BarChart title="Tổng mệnh giá phần thưởng" unit="VND" rows={data.series} series={[{ key: 'rewardFaceValueVnd', label: 'VND', color: SERIES_COLORS.single }]} />
+            <BarChart title="Lượt quay thưởng tri ân" unit="lượt" rows={data.series} series={[{ key: 'gachaSpins', label: 'lượt', color: SERIES_COLORS.single }]} />
+            <BarChart title="Lượt trúng móc khóa" unit="lượt" rows={data.series} series={[{ key: 'gachaWins', label: 'lượt', color: SERIES_COLORS.single }]} />
           </div>
 
           <Card title="Bảng số liệu">
@@ -177,8 +177,8 @@ export default function OverviewPage() {
                   <Th className="text-right">Tài khoản mới</Th>
                   <Th className="text-right">Check-in hợp lệ</Th>
                   <Th className="text-right">Không hợp lệ</Th>
-                  <Th className="text-right">Lượt Gacha</Th>
-                  <Th className="text-right">Tổng mệnh giá (VND)</Th>
+                  <Th className="text-right">Lượt quay thưởng</Th>
+                  <Th className="text-right">Lượt trúng móc khóa</Th>
                   <Th className="text-right">Lượt xem trang</Th>
                   <Th className="text-right">Lượt truy cập</Th>
                   <Th className="text-right">Người dùng hoạt động</Th>
@@ -192,7 +192,7 @@ export default function OverviewPage() {
                     <Td className="text-right">{formatNumber(row.checkInsValid)}</Td>
                     <Td className="text-right">{formatNumber(row.checkInsInvalid)}</Td>
                     <Td className="text-right">{formatNumber(row.gachaSpins)}</Td>
-                    <Td className="text-right">{formatNumber(row.rewardFaceValueVnd)}</Td>
+                    <Td className="text-right">{formatNumber(row.gachaWins)}</Td>
                     <Td className="text-right">{formatNumber(row.pageViews)}</Td>
                     <Td className="text-right">{formatNumber(row.visits)}</Td>
                     <Td className="text-right">{formatNumber(row.activeUsers)}</Td>
@@ -203,7 +203,7 @@ export default function OverviewPage() {
           </Card>
 
           {data.rewardsByAmount.length > 0 && (
-            <Card title="Phần thưởng theo mệnh giá">
+            <Card title="Mã nạp demo đã phát trước khi đổi sang móc khóa">
               <TableFrame label="Phần thưởng theo mệnh giá">
                 <thead>
                   <tr>
