@@ -1,0 +1,44 @@
+# Fly.io cho API GreenCanteen, build bằng Dockerfile ở gốc repo. `fly launch` điền tên app.
+# Bí mật và giá trị riêng đặt bằng `fly secrets set`, KHÔNG ghi vào tệp này (tệp nằm trong git):
+#   MONGODB_URI, ADMIN_MFA_KEY, ANALYTICS_HASH_KEY, CLIENT_ORIGIN, EMAIL_FROM, BREVO_API_KEY (hoặc RESEND_API_KEY + EMAIL_TRANSPORT=resend),
+#   khóa Google/Facebook nếu dùng. Các giá trị VISION_* khớp README mục 8.11 Cách 3 để Fly và Railway không lệch nhau.
+primary_region = "sin"
+
+[env]
+  TRUST_PROXY = "1"
+  EMAIL_TRANSPORT = "brevo"
+  VISION_ENGINE = "classifier"
+  VISION_MODEL_DIR = "/data/models"
+  VISION_CLASSIFIER_MODEL = "greencanteen/bev9-dinov2-vitb-280-int8"
+  VISION_CONFIDENCE_THRESHOLD = "0.95"
+  VISION_TIMEOUT_MS = "60000"
+  # Bằng số vCPU trong [[vm]]
+  VISION_CLASSIFIER_THREADS = "2"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # Máy tắt khi không có request, bật lại khi có (lần đầu sau khi tắt chậm vài giây vì nạp mô hình)
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  # /api/health trả 503 tới khi kết nối được MongoDB
+  [[http_service.checks]]
+    grace_period = "30s"
+    interval = "30s"
+    method = "GET"
+    timeout = "5s"
+    path = "/api/health"
+
+# Mô hình (87 MB) nằm trên volume; một volume gắn được một máy, nên chạy đúng một máy
+[mounts]
+  source = "greencanteen_data"
+  destination = "/data"
+  initial_size = "1gb"
+
+# Mô hình học trên ảnh thật cần khoảng 350–400 MB RAM (ước tính, chưa đo trên Linux); 256 MB không đủ
+[[vm]]
+  memory = "1gb"
+  cpu_kind = "shared"
+  cpus = 2
