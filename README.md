@@ -196,6 +196,7 @@ Các biến cần quan tâm nhất:
 | `TRUST_PROXY` | Địa chỉ reverse proxy đứng trước server (vd. `loopback`). **Không** dùng `true` hay `*` |
 | `COOKIE_SECURE`, `COOKIE_SAMESITE` | Cookie phiên. Tự bật `secure` khi production; client và API khác site thì `COOKIE_SAMESITE=none` + HTTPS |
 | `EMAIL_TRANSPORT`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `EMAIL_FROM` | Gửi email. Thiếu SMTP thì **không đăng ký bằng email** và không dùng được "Quên mật khẩu". Các bước: [mục 6.1](#61-nối-đăng-nhập-email-gmail-facebook) |
+| `BREVO_API_KEY`, `RESEND_API_KEY` | Gửi email qua API HTTPS thay cho SMTP (`EMAIL_TRANSPORT=brevo` hoặc `resend`), cho nơi chặn cổng SMTP như Railway. Các bước: [Email (cả hai cách)](#email-cả-hai-cách) |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALLBACK_URL` | Đăng nhập Google (bỏ trống ID/secret thì nút báo "Chưa cấu hình"). Các bước: [mục 6.1](#61-nối-đăng-nhập-email-gmail-facebook) |
 | `FACEBOOK_APP_ID`, `FACEBOOK_APP_SECRET`, `FACEBOOK_CALLBACK_URL` | Đăng nhập Facebook. Các bước: [mục 6.1](#61-nối-đăng-nhập-email-gmail-facebook) |
 | `VISION_ENGINE` | `classifier` (mặc định và duy nhất: bộ phân loại ONNX trong tiến trình, chỉ dùng CPU) hoặc `off`. Giá trị cũ `ensemble`, `clip`, `ollama` đã bị gỡ: check-in bằng ảnh tắt và log khởi động báo cần đổi thành `classifier` |
@@ -683,6 +684,24 @@ EMAIL_FROM="GreenCanteen <địa chỉ đã xác minh>"
 
 Thư gửi từ địa chỉ chưa xác thực tên miền dễ vào mục Spam, nên nhắc người dùng kiểm tra mục đó.
 
+**Gửi qua API HTTPS (bắt buộc trên Railway).** Railway chỉ mở SMTP từ gói Pro; gói Free, Trial, Hobby phải gửi thư qua API HTTPS ([tài liệu Railway](https://docs.railway.com/reference/outbound-networking)). Server gửi được qua API của Brevo hoặc Resend, các luồng đăng ký, quên mật khẩu, thư báo giữ nguyên:
+
+```
+# Brevo: dùng API key (Brevo → SMTP & API → API Keys), khác SMTP key ở trên
+EMAIL_TRANSPORT=brevo
+BREVO_API_KEY=<API key>
+EMAIL_FROM="GreenCanteen <địa chỉ đã xác minh trong Brevo>"
+```
+
+```
+# Resend: địa chỉ gửi thuộc tên miền đã thêm và xác minh trong Resend
+EMAIL_TRANSPORT=resend
+RESEND_API_KEY=<API key>
+EMAIL_FROM="GreenCanteen <no-reply@tên-miền-của-bạn>"
+```
+
+Lúc khởi động, log ghi `Gửi email qua API HTTPS của Brevo, người gửi ...`; server không gọi API khi khởi động nên khóa sai chỉ lộ ra ở thư đầu tiên. Thử bằng "Quên mật khẩu": thư không tới thì log có dòng `Gửi email đặt lại mật khẩu thất bại: EMAIL_API_<mã HTTP>_<mã lỗi của nhà cung cấp>` (đuôi `_unauthorized` là khóa API sai). Log chỉ ghi mã lỗi, không ghi địa chỉ người nhận.
+
 #### Cách 1: Local + Cloudflare Tunnel
 
 Cần `npm run setup` đã chạy xong và đã có mô hình nhận diện ảnh. MongoDB vẫn chỉ nghe `127.0.0.1`, Internet chỉ tới được Caddy qua tunnel.
@@ -893,7 +912,7 @@ Trước khi gửi, giao diện thu nhỏ ảnh chọn từ thư viện hoặc c
 
 3. **Thêm volume** cho service, mount tại `/data` (Free/Trial 0,5 GB, Hobby 5 GB; mô hình mới 87 MB, mobilenet 8 MB). Volume chỉ gắn khi container khởi động, nên tệp ghi ra lúc build không nằm trên volume.
 
-4. **Biến môi trường**, cộng thêm phần SMTP ở [Email (cả hai cách)](#email-cả-hai-cách):
+4. **Biến môi trường**, cộng thêm phần gửi qua API HTTPS (Brevo hoặc Resend) ở [Email (cả hai cách)](#email-cả-hai-cách). Không dùng SMTP: Railway chặn SMTP trừ gói Pro.
 
    ```
    RAILPACK_NODE_VERSION=24
@@ -999,7 +1018,8 @@ Test nhận diện bằng bộ phân loại ONNX thật chỉ chạy khi đã c�
 | Check-in báo "chưa sẵn sàng" (503) | Thiếu mô hình (`npm run vision:download`), hoặc `VISION_ENGINE` không hợp lệ: giá trị cũ `ensemble`, `clip`, `ollama` phải đổi thành `classifier`. Xem log khởi động |
 | Check-in báo "máy chủ đang bận" | Quá `VISION_MAX_QUEUE` ảnh chờ nhận diện; tăng tài nguyên hoặc giảm tải |
 | Check-in báo "mất quá nhiều thời gian" | CPU máy chủ quá tải hoặc nhiều ảnh đang xếp hàng. Đo bằng `npm run vision:benchmark` trên đúng máy đó, so với số đo ở [mục 8.2](#82-nhận-diện-ảnh-bộ-phân-loại-onnx-trên-cpu); chỉnh `VISION_CLASSIFIER_THREADS`, `VISION_TIMEOUT_MS`, `VISION_MAX_QUEUE` |
-| Tab "Tạo tài khoản" hoặc "Quên mật khẩu" báo "Chưa cấu hình" | Chưa có `SMTP_HOST` / `EMAIL_FROM`. Khi phát triển dùng `EMAIL_TRANSPORT=console` |
+| Tab "Tạo tài khoản" hoặc "Quên mật khẩu" báo "Chưa cấu hình" | Chưa có `SMTP_HOST` / `EMAIL_FROM`; với `EMAIL_TRANSPORT=brevo` / `resend` là thiếu `BREVO_API_KEY` / `RESEND_API_KEY` hoặc `EMAIL_FROM` không đúng dạng `Tên <email>`. Khi phát triển dùng `EMAIL_TRANSPORT=console` |
+| Thư không tới, log có `thất bại: EMAIL_API_...` | Nhà cung cấp API từ chối. Phần sau mã HTTP là mã lỗi của nhà cung cấp: đuôi `_unauthorized` là khóa API sai; mã khác thì kiểm tra địa chỉ trong `EMAIL_FROM` đã được xác minh với nhà cung cấp chưa. Trên Railway mà log báo không kết nối được SMTP: Railway chặn SMTP, chuyển sang `EMAIL_TRANSPORT=brevo` hoặc `resend` |
 | Nút Google / Facebook báo "Chưa cấu hình" | Thiếu ID hoặc secret trong `server/.env`, hoặc đã điền mà chưa khởi động lại API |
 | Trang Google báo `redirect_uri_mismatch` | Callback không khớp tuyệt đối với **Authorized redirect URIs**, kể cả `http`/`https`, cổng và dấu `/` ở cuối |
 | Trang Facebook báo `URL blocked` | Callback chưa có trong **Valid OAuth Redirect URIs**. `http://localhost` chỉ được tự cho phép ở Development mode |

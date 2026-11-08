@@ -1,0 +1,9 @@
+.git
+**/node_modules
+**/.env
+**/.env.*
+client
+server/test
+server/coverage
+server/uploads
+server/models
